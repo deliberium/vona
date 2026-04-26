@@ -1,0 +1,24 @@
+[package]
+name = "vona-transport-local"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "HTTP and Unix-socket IPC transport layer for vona speech-to-speech runtimes"
+
+[dependencies]
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_cbor = "0.11"
+thiserror = "1"
+tokio = { version = "1", features = ["io-util", "net", "sync", "time"] }
+vona = { path = "../vona" }
+vona-seamless = { path = "../vona-seamless" }
+
+[dev-dependencies]
+anyhow = "1"
+axum = { version = "0.7", features = ["macros"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

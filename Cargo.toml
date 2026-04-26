@@ -1,0 +1,18 @@
+[workspace]
+members = [
+    "crates/vona",
+    "crates/vona-moshi",
+    "crates/vona-seamless",
+    "crates/vona-test-harness",
+    "crates/vona-transport-local",
+    "crates/vona-sidecar",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+version = "0.1.0"
+authors = ["Deliberium contributors"]
+repository = "https://github.com/deliberium/vona"
+homepage = "https://github.com/deliberium/vona"

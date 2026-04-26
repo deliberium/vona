@@ -1,0 +1,20 @@
+[package]
+name = "vona-sidecar"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Sidecar binary exposing vona backends over HTTP and Unix-socket IPC"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.7", features = ["macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "net", "signal"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+vona = { path = "../vona" }
+vona-seamless = { path = "../vona-seamless" }
+vona-transport-local = { path = "../vona-transport-local" }
