@@ -6,7 +6,7 @@ use crate::remote::{
 use async_trait::async_trait;
 use reqwest::Client;
 use std::time::Duration;
-use vona::{
+use vona_core::{
     BackendCapabilities, BackendError, BackendStep, ExternalContextEvent, SessionConfig,
     SpeechToSpeechBackend,
 };
@@ -131,7 +131,7 @@ impl SpeechToSpeechBackend for SeamlessM4tHttpBackend {
     async fn step(
         &self,
         session: &mut Self::Session,
-        input: vona::AudioInputFrame,
+        input: vona_core::AudioInputFrame,
     ) -> Result<BackendStep, BackendError> {
         self.inner.step(session, input).await
     }

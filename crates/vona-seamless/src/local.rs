@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::Arc;
-use vona::{
+use vona_core::{
     AudioInputFrame, AudioOutputFrame, BackendCapabilities, BackendError, BackendStep,
     ExternalContextEvent, SessionConfig, SpeechToSpeechBackend,
 };

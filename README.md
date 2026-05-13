@@ -13,6 +13,7 @@ Most speech-to-speech projects begin as one of three things: a model demo, a pro
 Use Vona when you want:
 
 - a Rust-native boundary between audio transports and speech-to-speech backends
+- first-class contracts for both step-oriented STS and event-stream realtime voice
 - deterministic tests for interruption, tool-call, context-injection, and fallback behavior
 - the option to run model backends in-process, behind HTTP, or behind local IPC
 - provider-neutral traits that let one host application try multiple STS backends
@@ -24,14 +25,21 @@ Do not use Vona if you need a turnkey assistant, hosted model service, wake-word
 
 | Crate | Purpose |
 |-------|---------|
-| `vona` | Core traits, event types, session driver, runtime policy, skill registry, and passthrough backend. |
+| `vona` | Umbrella crate that re-exports `vona-core` and optional adapter crates through features. |
+| `vona-core` | Core traits, event types, session driver, runtime policy, skill registry, and passthrough backend. |
+| `vona-openai-realtime` | OpenAI Realtime protocol mapping for Vona realtime sessions. |
+| `vona-gemini-live` | Gemini Live protocol mapping for Vona realtime sessions. |
+| `vona-azure-speech` | Azure Voice Live plus Azure Speech STT/TTS helper surfaces. |
+| `vona-elevenlabs` | ElevenLabs streaming text-to-speech helper surface for cascaded voice backends. |
+| `vona-deepgram` | Deepgram Flux/listen STT and Aura streaming TTS helper surfaces. |
+| `vona-model-provisioning` | Local model manifest and cache planning for Vona-owned model provisioning. |
 | `vona-seamless` | Seamless M4T-style local ONNX and HTTP sidecar backend adapters. |
 | `vona-moshi` | Kyutai Moshi backend surface using WebSocket and Opus framing. |
 | `vona-transport-local` | Local HTTP/IPC transport helpers and length-prefixed CBOR framing. |
 | `vona-sidecar` | Sidecar binary exposing Vona backends over HTTP and Unix-socket IPC. |
 | `vona-test-harness` | Deterministic mock backend, scripted transport, fixtures, and benchmark harnesses. |
 
-The workspace is backend-agnostic by design. Provider-specific integrations live in adapter crates; the core `vona` crate stays focused on stable contracts.
+The workspace is backend-agnostic by design. Provider-specific integrations live in adapter crates; the `vona-core` crate stays focused on stable contracts, while `vona` is the crates.io facade for applications that want one dependency with opt-in features.
 
 ## Current Status
 
@@ -40,18 +48,23 @@ Vona is pre-1.0 and suitable for integration experiments, adapter development, a
 Implemented today:
 
 - step-oriented speech-to-speech backend trait
+- event-stream realtime voice backend trait for hosted APIs, Moshi-family dialogue, and open realtime voice models
 - audio transport trait
 - session driver with metrics for first audio, tool calls, interruptions, and fallback decisions
 - skill execution registry with schema validation and audit events
 - context injection through `ExternalContextEvent`
 - passthrough, Seamless M4T-style, Moshi, HTTP sidecar, and local IPC surfaces
+- protocol crates for OpenAI Realtime, Gemini Live, Azure Voice Live/Speech, ElevenLabs TTS, and Deepgram STT/TTS
+- local model provisioning manifests and cache inspection for local model adapters
+- deterministic realtime voice harness for tool-call, interruption, latency-mark, and event-order testing
 - deterministic test harnesses and release-gate benchmarks
 
 Known limits:
 
 - production transport adapters such as LiveKit are not included yet
-- the Seamless local ONNX path depends on operator-supplied model artifacts
+- the Seamless local ONNX path still needs operator-supplied model artifacts until downloader policy is enabled on top of `vona-model-provisioning`
 - text-conditioned local generation is not yet parity-complete with all deployment modes
+- cloud provider crates currently implement config and protocol mapping, not live credentialed CI tests
 - performance SLOs beyond the deterministic release gate should be measured in your target environment
 
 ## Prerequisites
@@ -97,6 +110,36 @@ Run the deterministic mock harness:
 
 ```bash
 cargo test -p vona-test-harness waveform_fixture_round_trips_through_scripted_transport -- --nocapture
+```
+
+## Installation
+
+For most applications, depend on the facade crate and enable the surfaces you need:
+
+```bash
+cargo add vona --features seamless,transport-local
+```
+
+Available facade features:
+
+- `seamless`: re-export `vona-seamless`
+- `moshi`: re-export `vona-moshi`
+- `transport-local`: re-export `vona-transport-local` and enable `seamless`
+- `test-harness`: re-export `vona-test-harness`
+- `all`: enable every facade feature
+
+You can also depend on lower-level crates directly:
+
+```bash
+cargo add vona-core
+cargo add vona-seamless
+```
+
+From a source checkout, use path dependencies:
+
+```toml
+[dependencies]
+vona = { path = "crates/vona", features = ["seamless"] }
 ```
 
 ## Minimal Backend Example
@@ -171,6 +214,8 @@ The important integration primitive is `ExternalContextEvent`. It carries transc
 
 See [docs/architecture.md](docs/architecture.md) for the sidecar contract and request/response shapes.
 
+See [docs/sts-model-coverage.md](docs/sts-model-coverage.md) for how Vona distinguishes translation STS, full-duplex dialogue, hosted realtime APIs, open realtime voice models, and cascaded ASR+LLM+TTS systems.
+
 ## Sidecar And Local Backends
 
 The `vona-sidecar` binary exposes the Seamless M4T-style backend over HTTP and, on Unix platforms, a local IPC socket.
@@ -233,7 +278,8 @@ Read the full checklist in [docs/release-readiness-checklist.md](docs/release-re
 
 ```text
 crates/
-  vona/                  core runtime contracts
+  vona/                  facade crate with optional adapter features
+  vona-core/             core runtime contracts
   vona-seamless/         Seamless M4T-style backend adapters
   vona-moshi/            Moshi backend surface
   vona-transport-local/  local IPC and transport helpers
@@ -259,6 +305,28 @@ Useful rules of thumb:
 This project follows the [Contributor Covenant Code of Conduct](CODE_OF_CONDUCT.md).
 
 The current roadmap is in [docs/roadmap.md](docs/roadmap.md).
+
+## Publishing
+
+The crates are intended to publish in dependency order:
+
+1. `vona-core`
+2. `vona-model-provisioning`
+3. `vona-openai-realtime`
+4. `vona-gemini-live`
+5. `vona-azure-speech`
+6. `vona-elevenlabs`
+7. `vona-deepgram`
+8. `vona-seamless`
+9. `vona-moshi`
+10. `vona-test-harness`
+11. `vona-transport-local`
+12. `vona-sidecar`
+13. `vona`
+
+The order matters because the facade crate depends on the adapter crates, and adapter crates depend on `vona-core`.
+
+Use `scripts/release_crates.sh --release current|patch|minor|major` to update release metadata, run the release gate, package crates in order, and optionally publish with `--publish`.
 
 ## Security
 

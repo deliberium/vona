@@ -15,7 +15,7 @@ use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::{Mutex, watch};
 use tracing::{info, warn};
-use vona::{AudioInputFrame, SessionConfig, SpeechToSpeechBackend};
+use vona_core::{AudioInputFrame, SessionConfig, SpeechToSpeechBackend};
 use vona_seamless::{
     SeamlessM4tLocalBackend, SeamlessM4tLocalConfig, SeamlessM4tLocalSession,
     SeamlessM4tRemoteStepRequest, SeamlessM4tRemoteStepResponse,

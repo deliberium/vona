@@ -19,7 +19,7 @@
 //! ```
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use vona::{
+use vona_core::{
     AudioInputFrame, AudioOutputFrame, BackendStep, SessionConfig, SpeechToSpeechBackend,
     transport::AudioTransport,
 };
@@ -157,7 +157,7 @@ fn bench_transport_loopback(c: &mut Criterion) {
 ///
 /// SLO target: P99 < 200 µs.
 fn bench_inject_and_drain_events(c: &mut Criterion) {
-    use vona::ExternalContextEvent;
+    use vona_core::ExternalContextEvent;
 
     let runtime = rt();
 

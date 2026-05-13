@@ -2,19 +2,32 @@
 
 The workspace is split into two layers:
 
-- Core runtime contracts in `crates/vona`
+- Core runtime contracts in `crates/vona-core`
+- Facade re-exports and optional adapter features in `crates/vona`
 - Deterministic verification tooling in `crates/vona-test-harness`
 
 ## Layer Boundaries
 
-`crates/vona` owns the generic speech-to-speech execution model:
+`crates/vona-core` owns the generic speech-to-speech execution model:
 
 - session configuration and runtime policy
 - transport and backend traits
+- event-stream realtime voice traits
 - skill injection and external context event plumbing
 - backend adapters such as passthrough and HTTP sidecars
 
+`crates/vona` is the umbrella crate for crates.io consumers. It re-exports `vona-core` by default and exposes adapter crates through opt-in features.
+
 `crates/vona-test-harness` exists to verify backend and runtime behavior without a live model server. It provides deterministic transports, scripted backends, and mock skill execution so runtime policy can be exercised in tests.
+
+## Runtime Contracts
+
+Vona intentionally has two backend shapes:
+
+- `SpeechToSpeechBackend` for step-oriented systems such as Seamless-style speech translation.
+- `RealtimeVoiceBackend` for event-stream systems such as hosted realtime voice APIs, Moshi-family full-duplex dialogue, and new open realtime voice models.
+
+The realtime contract uses explicit input and output events for audio chunks, text, tool results, control messages, tool calls, interruptions, latency marks, and close events. This keeps provider-specific WebSocket, IPC, or hosted-service event formats out of host application code.
 
 ## Sidecar Contract
 

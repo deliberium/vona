@@ -64,11 +64,18 @@ cargo check --workspace --locked
 
 log "Step 2/6: deterministic crate test matrix"
 cargo test -p vona --locked
+cargo test -p vona-core --locked
 cargo test -p vona-test-harness --locked
 cargo test -p vona-seamless --locked
 cargo test -p vona-transport-local --locked
 cargo test -p vona-sidecar --locked
 cargo test -p vona-moshi --locked
+cargo test -p vona-openai-realtime --locked
+cargo test -p vona-gemini-live --locked
+cargo test -p vona-azure-speech --locked
+cargo test -p vona-elevenlabs --locked
+cargo test -p vona-deepgram --locked
+cargo test -p vona-model-provisioning --locked
 
 log "Step 3/6: cargo check --workspace --all-targets --locked"
 cargo check --workspace --all-targets --locked

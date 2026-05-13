@@ -1,0 +1,19 @@
+[package]
+name = "vona-deepgram"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Deepgram streaming STT and TTS adapter helpers for Vona"
+documentation = "https://docs.rs/vona-deepgram"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+vona-core.workspace = true

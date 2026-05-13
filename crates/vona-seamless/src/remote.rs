@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
-use vona::{
+use vona_core::{
     AudioInputFrame, AudioOutputFrame, BackendCapabilities, BackendError, BackendStep,
     ControlEvent, ExternalContextEvent, SessionConfig, SpeechStyleProfile, SpeechToSpeechBackend,
 };
@@ -153,7 +153,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use vona::{AudioInputFrame, SpeechToSpeechBackend};
+    use vona_core::{AudioInputFrame, SpeechToSpeechBackend};
 
     // ── Mock transport ──────────────────────────────────────────────────────
 
@@ -223,7 +223,7 @@ mod tests {
             echo_transport(vec![]),
             SeamlessM4tRemoteConfig::default(),
         );
-        let session_cfg = vona::SessionConfig {
+        let session_cfg = vona_core::SessionConfig {
             session_id: "test-session".into(),
             sample_rate_hz: 16_000,
             channels: 1,
@@ -244,7 +244,7 @@ mod tests {
             SeamlessM4tRemoteConfig::default(),
         );
         let mut session = backend
-            .start_session(vona::SessionConfig::default())
+            .start_session(vona_core::SessionConfig::default())
             .await
             .unwrap();
 
@@ -267,7 +267,7 @@ mod tests {
             SeamlessM4tRemoteConfig::default(),
         );
         let mut session = backend
-            .start_session(vona::SessionConfig::default())
+            .start_session(vona_core::SessionConfig::default())
             .await
             .unwrap();
 
@@ -290,7 +290,7 @@ mod tests {
             SeamlessM4tRemoteConfig::default(),
         );
         let mut session = backend
-            .start_session(vona::SessionConfig::default())
+            .start_session(vona_core::SessionConfig::default())
             .await
             .unwrap();
 
@@ -315,7 +315,7 @@ mod tests {
             SeamlessM4tRemoteConfig::default(),
         );
         let mut session = backend
-            .start_session(vona::SessionConfig::default())
+            .start_session(vona_core::SessionConfig::default())
             .await
             .unwrap();
 
@@ -351,7 +351,7 @@ mod tests {
             SeamlessM4tRemoteConfig::default(),
         );
         let session = backend
-            .start_session(vona::SessionConfig::default())
+            .start_session(vona_core::SessionConfig::default())
             .await
             .unwrap();
         assert!(backend.end_session(session).await.is_ok());

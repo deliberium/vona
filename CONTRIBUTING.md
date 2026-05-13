@@ -29,7 +29,8 @@ cargo run -p vona-test-harness --example mock_session --locked
 
 - All changes must keep `bash scripts/release_gate.sh` green.
 - New adapter crates go under `crates/` and must not add internal dependencies to `deliberium`.
-- Keep crates focused: core traits in `vona`, provider adapters in separate crates.
+- Keep crates focused: core traits in `vona-core`, facade features in `vona`, provider adapters in separate crates.
+- Adapter crates should depend on `vona-core`; applications can depend on the `vona` facade.
 - Keep examples deterministic unless they are explicitly marked as requiring external services or model artifacts.
 - Document new adapter maturity in `docs/adapter-maturity.md`.
 

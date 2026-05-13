@@ -2,10 +2,15 @@
 name = "vona-moshi"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "Kyutai Moshi backend for vona — full-duplex STS via WebSocket, no Python runtime required"
+documentation = "https://docs.rs/vona-moshi"
 
 # System prerequisites:
 #   macOS:  brew install opus
@@ -13,19 +18,19 @@ description = "Kyutai Moshi backend for vona — full-duplex STS via WebSocket, 
 #   (the `opus` crate links against libopus via pkg-config)
 
 [dependencies]
-vona           = { path = "../vona" }
-async-trait    = "0.1"
-byteorder      = "1"
-futures-util   = "0.3"
-native-tls     = "0.2"
-ogg            = { version = "0.9", features = ["async"] }
-opus           = "0.3"
-serde          = { version = "1", features = ["derive"] }
-serde_json     = "1"
-thiserror      = "1"
-tokio          = { version = "1", features = ["rt", "sync", "io-util", "net"] }
-tokio-tungstenite = { version = "0.24", default-features = false, features = ["native-tls", "connect"] }
-tracing        = "0.1"
+vona-core.workspace = true
+async-trait.workspace = true
+byteorder.workspace = true
+futures-util.workspace = true
+native-tls.workspace = true
+ogg.workspace = true
+opus.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "io-util", "net"] }
+tokio-tungstenite.workspace = true
+tracing.workspace = true
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "macros"] }

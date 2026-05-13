@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use serde_json::json;
-use vona::{
+use vona_core::{
     AudioInputFrame, AudioOutputFrame, BackendStep, ControlEvent, FillerStrategy, SessionConfig,
     SkillCall, VonaRuntime, run_session,
 };

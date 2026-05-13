@@ -3,7 +3,7 @@ use axum::{Json, Router, routing::post};
 use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::sync::watch;
-use vona::ExternalContextEvent;
+use vona_core::ExternalContextEvent;
 use vona_seamless::{
     SeamlessM4tRemoteStepRequest, SeamlessM4tRemoteStepResponse, SeamlessM4tRemoteTransport,
 };

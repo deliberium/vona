@@ -1,0 +1,20 @@
+[package]
+name = "vona-openai-realtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "OpenAI Realtime protocol adapter surface for Vona"
+documentation = "https://docs.rs/vona-openai-realtime"
+
+[dependencies]
+base64.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+vona-core.workspace = true

@@ -1,0 +1,21 @@
+[package]
+name = "vona-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Core traits, event types, session driver, skill registry and runtime policy surface for real-time speech-to-speech runtimes"
+documentation = "https://docs.rs/vona-core"
+
+[dependencies]
+async-trait.workspace = true
+jsonschema.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync", "time"] }

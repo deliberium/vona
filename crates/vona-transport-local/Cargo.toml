@@ -2,23 +2,28 @@
 name = "vona-transport-local"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
 description = "HTTP and Unix-socket IPC transport layer for vona speech-to-speech runtimes"
+documentation = "https://docs.rs/vona-transport-local"
 
 [dependencies]
-async-trait = "0.1"
-serde = { version = "1", features = ["derive"] }
-serde_cbor = "0.11"
-thiserror = "1"
-tokio = { version = "1", features = ["io-util", "net", "sync", "time"] }
-vona = { path = "../vona" }
-vona-seamless = { path = "../vona-seamless" }
+async-trait.workspace = true
+serde.workspace = true
+serde_cbor.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "net", "sync", "time"] }
+vona-core.workspace = true
+vona-seamless.workspace = true
 
 [dev-dependencies]
-anyhow = "1"
-axum = { version = "0.7", features = ["macros"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-serde_json = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+anyhow.workspace = true
+axum.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

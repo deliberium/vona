@@ -5,8 +5,13 @@ This roadmap is intentionally practical. Vona is useful today as a runtime contr
 ## Near Term
 
 - Publish a first tagged `v0.1.0` release with the release gate passing on macOS and Linux.
-- Keep the core `vona` crate provider-neutral and small.
+- Keep `vona-core` provider-neutral and small.
+- Keep the `vona` facade crate focused on re-exports and optional features.
 - Expand deterministic examples around session lifecycle, interruptions, skill calls, context injection, and fallback behavior.
+- Promote the initial OpenAI Realtime, Gemini Live, and Azure Voice Live protocol crates from deterministic protocol mapping to live transport adapters.
+- Build cascaded backend examples from Deepgram/Azure STT, an application LLM, and ElevenLabs/Deepgram/Azure TTS.
+- Extend `vona-model-provisioning` from cache planning to checksum-verified downloads and local provider pulls.
+- Add concrete adapters for newer open realtime voice models once their serving contracts stabilize.
 - Add CI jobs that run the release gate on Linux and macOS with Opus installed.
 - Add issue templates for bug reports, backend adapter proposals, and documentation gaps.
 

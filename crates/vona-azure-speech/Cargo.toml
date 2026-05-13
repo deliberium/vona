@@ -1,0 +1,19 @@
+[package]
+name = "vona-azure-speech"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Azure AI Speech adapter helpers for Vona"
+documentation = "https://docs.rs/vona-azure-speech"
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+vona-core.workspace = true

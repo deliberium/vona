@@ -5,12 +5,16 @@ use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use vona::backend::{BackendCapabilities, BackendError, BackendStep, SpeechToSpeechBackend};
-use vona::runtime::{FallbackReason, SessionPolicy};
-use vona::session::SessionConfig;
-use vona::skills::{SkillError, SkillExecutor, SkillOutput};
-use vona::transport::{AudioTransport, TransportError};
-use vona::types::{
+use vona_core::backend::{BackendCapabilities, BackendError, BackendStep, SpeechToSpeechBackend};
+use vona_core::realtime::{
+    RealtimeVoiceBackend, RealtimeVoiceCapabilities, RealtimeVoiceError, RealtimeVoiceInput,
+    RealtimeVoiceOutput, RealtimeVoiceSessionConfig,
+};
+use vona_core::runtime::{FallbackReason, SessionPolicy};
+use vona_core::session::SessionConfig;
+use vona_core::skills::{SkillError, SkillExecutor, SkillOutput};
+use vona_core::transport::{AudioTransport, TransportError};
+use vona_core::types::{
     AudioInputFrame, AudioOutputFrame, ControlEvent, ExternalContextEvent, SkillCall, SkillContext,
 };
 
@@ -116,6 +120,78 @@ impl SpeechToSpeechBackend for MockBackend {
     }
 }
 
+#[derive(Default)]
+pub struct ScriptedRealtimeBackend {
+    outputs: Arc<Mutex<VecDeque<RealtimeVoiceOutput>>>,
+    received_inputs: Arc<Mutex<Vec<RealtimeVoiceInput>>>,
+    capabilities: RealtimeVoiceCapabilities,
+}
+
+impl ScriptedRealtimeBackend {
+    pub fn with_capabilities(capabilities: RealtimeVoiceCapabilities) -> Self {
+        Self {
+            capabilities,
+            ..Self::default()
+        }
+    }
+
+    pub fn push_output(&self, output: RealtimeVoiceOutput) {
+        self.outputs
+            .lock()
+            .expect("realtime outputs")
+            .push_back(output);
+    }
+
+    pub fn received_inputs(&self) -> Vec<RealtimeVoiceInput> {
+        self.received_inputs
+            .lock()
+            .expect("realtime inputs")
+            .clone()
+    }
+}
+
+#[async_trait]
+impl RealtimeVoiceBackend for ScriptedRealtimeBackend {
+    type Session = RealtimeVoiceSessionConfig;
+
+    fn realtime_capabilities(&self) -> RealtimeVoiceCapabilities {
+        self.capabilities.clone()
+    }
+
+    async fn start_realtime_session(
+        &self,
+        config: RealtimeVoiceSessionConfig,
+    ) -> Result<Self::Session, RealtimeVoiceError> {
+        Ok(config)
+    }
+
+    async fn send_realtime_event(
+        &self,
+        _session: &mut Self::Session,
+        input: RealtimeVoiceInput,
+    ) -> Result<(), RealtimeVoiceError> {
+        self.received_inputs
+            .lock()
+            .expect("realtime inputs")
+            .push(input);
+        Ok(())
+    }
+
+    async fn recv_realtime_event(
+        &self,
+        _session: &mut Self::Session,
+    ) -> Result<Option<RealtimeVoiceOutput>, RealtimeVoiceError> {
+        Ok(self.outputs.lock().expect("realtime outputs").pop_front())
+    }
+
+    async fn close_realtime_session(
+        &self,
+        _session: Self::Session,
+    ) -> Result<(), RealtimeVoiceError> {
+        Ok(())
+    }
+}
+
 pub struct EchoSkillExecutor;
 
 #[async_trait]
@@ -131,6 +207,97 @@ impl SkillExecutor for EchoSkillExecutor {
             audit_payload: None,
         })
     }
+}
+
+#[tokio::test]
+async fn scripted_realtime_backend_preserves_input_and_output_order() {
+    use vona_core::realtime::{RealtimeLatencyMark, RealtimeLatencyStage};
+
+    let backend = ScriptedRealtimeBackend::with_capabilities(RealtimeVoiceCapabilities {
+        supports_full_duplex: true,
+        supports_streaming_audio_input: true,
+        supports_streaming_audio_output: true,
+        supports_tool_calls: true,
+        supports_interruption: true,
+        supports_context_injection: true,
+        is_hosted_service: true,
+        max_input_chunk_ms: Some(40),
+    });
+
+    backend.push_output(RealtimeVoiceOutput::LatencyMark(RealtimeLatencyMark {
+        stage: RealtimeLatencyStage::InputReceived,
+        elapsed_ms: 5,
+    }));
+    backend.push_output(RealtimeVoiceOutput::ToolCall(SkillCall {
+        name: "lookup_context".to_string(),
+        arguments: json!({"topic": "sts"}),
+    }));
+    backend.push_output(RealtimeVoiceOutput::Interruption {
+        reason: Some("barge_in".to_string()),
+    });
+    backend.push_output(RealtimeVoiceOutput::Closed {
+        reason: Some("done".to_string()),
+    });
+
+    let mut session = backend
+        .start_realtime_session(RealtimeVoiceSessionConfig::default())
+        .await
+        .expect("start realtime session");
+
+    backend
+        .send_realtime_event(
+            &mut session,
+            RealtimeVoiceInput::Audio(AudioInputFrame {
+                sequence: 1,
+                sample_rate_hz: 24_000,
+                channels: 1,
+                samples: vec![0.0; 320],
+            }),
+        )
+        .await
+        .expect("send audio");
+    backend
+        .send_realtime_event(
+            &mut session,
+            RealtimeVoiceInput::ToolResult(ExternalContextEvent {
+                source: "skill:lookup_context".to_string(),
+                spoken_summary: Some("context ready".to_string()),
+                payload: json!({"ok": true}),
+            }),
+        )
+        .await
+        .expect("send tool result");
+
+    let received = backend.received_inputs();
+    assert!(matches!(received[0], RealtimeVoiceInput::Audio(_)));
+    assert!(matches!(received[1], RealtimeVoiceInput::ToolResult(_)));
+
+    assert!(matches!(
+        backend.recv_realtime_event(&mut session).await.unwrap(),
+        Some(RealtimeVoiceOutput::LatencyMark(RealtimeLatencyMark {
+            stage: RealtimeLatencyStage::InputReceived,
+            elapsed_ms: 5
+        }))
+    ));
+    assert!(matches!(
+        backend.recv_realtime_event(&mut session).await.unwrap(),
+        Some(RealtimeVoiceOutput::ToolCall(_))
+    ));
+    assert!(matches!(
+        backend.recv_realtime_event(&mut session).await.unwrap(),
+        Some(RealtimeVoiceOutput::Interruption { .. })
+    ));
+    assert!(matches!(
+        backend.recv_realtime_event(&mut session).await.unwrap(),
+        Some(RealtimeVoiceOutput::Closed { .. })
+    ));
+    assert!(
+        backend
+            .recv_realtime_event(&mut session)
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 pub struct AllowAllPolicy;
@@ -196,7 +363,7 @@ pub async fn measure_loopback_latency_ms(transport: &ScriptedTransport) -> u128 
 
 #[tokio::test]
 async fn runtime_executes_skill_call_and_returns_injection_event() {
-    use vona::runtime::{FillerStrategy, RuntimeDecision, VonaRuntime};
+    use vona_core::runtime::{FillerStrategy, RuntimeDecision, VonaRuntime};
 
     let runtime = VonaRuntime::new(
         Arc::new(EchoSkillExecutor),
@@ -272,8 +439,8 @@ async fn scripted_transport_loopback_latency_stays_low_for_fixture_audio() {
 
 #[tokio::test]
 async fn run_session_counts_interruption_and_clears_buffered_output() {
-    use vona::runtime::{FillerStrategy, VonaRuntime};
-    use vona::session::run_session;
+    use vona_core::runtime::{FillerStrategy, VonaRuntime};
+    use vona_core::session::run_session;
 
     let transport = ScriptedTransport::default();
     transport.push_input(AudioInputFrame {

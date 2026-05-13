@@ -2,15 +2,62 @@
 name = "vona"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-description = "Core traits, event types, skill registry and runtime policy surface for real-time speech-to-speech runtimes"
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Umbrella crate for Vona real-time speech-to-speech runtime contracts and optional adapters"
+documentation = "https://docs.rs/vona"
+
+[lib]
+name = "vona"
+path = "src/lib.rs"
+
+[features]
+default = []
+all = [
+    "azure-speech",
+    "cloud",
+    "deepgram",
+    "elevenlabs",
+    "gemini-live",
+    "model-provisioning",
+    "moshi",
+    "openai-realtime",
+    "seamless",
+    "test-harness",
+    "transport-local",
+]
+cloud = [
+    "azure-speech",
+    "deepgram",
+    "elevenlabs",
+    "gemini-live",
+    "openai-realtime",
+]
+seamless = ["dep:vona-seamless"]
+moshi = ["dep:vona-moshi"]
+transport-local = ["seamless", "dep:vona-transport-local"]
+test-harness = ["dep:vona-test-harness"]
+openai-realtime = ["dep:vona-openai-realtime"]
+gemini-live = ["dep:vona-gemini-live"]
+elevenlabs = ["dep:vona-elevenlabs"]
+deepgram = ["dep:vona-deepgram"]
+azure-speech = ["dep:vona-azure-speech"]
+model-provisioning = ["dep:vona-model-provisioning"]
 
 [dependencies]
-async-trait = "0.1"
-jsonschema = { version = "0.29", default-features = false }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-thiserror = "1"
-tokio = { version = "1", features = ["rt", "sync", "time"] }
+vona-core.workspace = true
+vona-azure-speech = { workspace = true, optional = true }
+vona-deepgram = { workspace = true, optional = true }
+vona-elevenlabs = { workspace = true, optional = true }
+vona-gemini-live = { workspace = true, optional = true }
+vona-model-provisioning = { workspace = true, optional = true }
+vona-moshi = { workspace = true, optional = true }
+vona-openai-realtime = { workspace = true, optional = true }
+vona-seamless = { workspace = true, optional = true }
+vona-test-harness = { workspace = true, optional = true }
+vona-transport-local = { workspace = true, optional = true }

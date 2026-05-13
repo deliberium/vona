@@ -8,7 +8,7 @@ Replace the current local sidecar hop of:
 - `Vec<f32>` audio payload expansion
 - loopback HTTP framing
 
-with a faster local transport, while keeping core `vona` transport-agnostic and reusable across:
+with a faster local transport, while keeping `vona-core` transport-agnostic and reusable across:
 
 - desktop apps
 - mobile companions
@@ -17,7 +17,7 @@ with a faster local transport, while keeping core `vona` transport-agnostic and 
 
 ## Design Principle
 
-`vona` core should define the backend RPC contract, not the wire format.
+`vona-core` should define the backend RPC contract, not the wire format.
 
 That means:
 
@@ -28,7 +28,7 @@ That means:
 
 ## What Was Landed
 
-Core `vona` now exposes a reusable Seamless remote transport boundary:
+The Seamless adapter now exposes a reusable remote transport boundary:
 
 - `SeamlessM4tRemoteTransport`
 - `SeamlessM4tRemoteStepRequest`
@@ -100,9 +100,12 @@ Phase the rollout:
 
 ## Suggested Crate Boundaries
 
-`crates/vona`
+`crates/vona-core`
 
 - backend traits
+
+`crates/vona-seamless`
+
 - request/response contract structs
 - generic remote backend
 - convenience HTTP transport wrapper

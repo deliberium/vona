@@ -4,7 +4,7 @@ use ort::{
     value::TensorRef,
 };
 use tokio::sync::Mutex;
-use vona::BackendError;
+use vona_core::BackendError;
 
 use crate::local::SeamlessM4tLocalConfig;
 

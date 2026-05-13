@@ -1,7 +1,14 @@
 [workspace]
 members = [
     "crates/vona",
+    "crates/vona-azure-speech",
+    "crates/vona-core",
+    "crates/vona-deepgram",
+    "crates/vona-elevenlabs",
+    "crates/vona-gemini-live",
+    "crates/vona-model-provisioning",
     "crates/vona-moshi",
+    "crates/vona-openai-realtime",
     "crates/vona-seamless",
     "crates/vona-test-harness",
     "crates/vona-transport-local",
@@ -11,8 +18,47 @@ resolver = "2"
 
 [workspace.package]
 edition = "2024"
+rust-version = "1.88"
 license = "MIT"
 version = "0.1.0"
 authors = ["Deliberium contributors"]
 repository = "https://github.com/deliberium/vona"
 homepage = "https://github.com/deliberium/vona"
+readme = "README.md"
+keywords = ["speech", "voice", "audio", "realtime", "ai"]
+categories = ["api-bindings", "multimedia::audio"]
+
+[workspace.dependencies]
+anyhow = "1"
+async-trait = "0.1"
+axum = { version = "0.7", features = ["macros"] }
+base64 = "0.22"
+byteorder = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
+futures-util = "0.3"
+jsonschema = { version = "0.29", default-features = false }
+native-tls = "0.2"
+ndarray = "0.17"
+ogg = { version = "0.9", features = ["async"] }
+opus = "0.3"
+ort = { version = "2.0.0-rc.12", features = ["ndarray"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+serde_cbor = "0.11"
+serde_json = "1"
+thiserror = "1"
+tokio = "1"
+tokio-tungstenite = { version = "0.24", default-features = false, features = ["native-tls", "connect"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+vona-core = { version = "0.1.0", path = "crates/vona-core" }
+vona-azure-speech = { version = "0.1.0", path = "crates/vona-azure-speech" }
+vona-deepgram = { version = "0.1.0", path = "crates/vona-deepgram" }
+vona-elevenlabs = { version = "0.1.0", path = "crates/vona-elevenlabs" }
+vona-gemini-live = { version = "0.1.0", path = "crates/vona-gemini-live" }
+vona-model-provisioning = { version = "0.1.0", path = "crates/vona-model-provisioning" }
+vona-moshi = { version = "0.1.0", path = "crates/vona-moshi" }
+vona-openai-realtime = { version = "0.1.0", path = "crates/vona-openai-realtime" }
+vona-seamless = { version = "0.1.0", path = "crates/vona-seamless" }
+vona-test-harness = { version = "0.1.0", path = "crates/vona-test-harness" }
+vona-transport-local = { version = "0.1.0", path = "crates/vona-transport-local" }

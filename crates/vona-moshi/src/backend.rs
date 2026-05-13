@@ -42,7 +42,7 @@ use std::sync::{Arc, Mutex};
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
-use vona::{
+use vona_core::{
     AudioInputFrame, AudioOutputFrame, BackendCapabilities, BackendError, BackendStep,
     ControlEvent, ExternalContextEvent, SessionConfig, SpeechToSpeechBackend,
 };
@@ -257,24 +257,21 @@ impl SpeechToSpeechBackend for MoshiBackend {
         let recv_task = tokio::spawn(async move {
             while let Some(msg) = ws_source.next().await {
                 match msg {
-                    Ok(Message::Binary(bin)) if !bin.is_empty() => {
-                        match bin[0] {
-                            mt::AUDIO => {
-                                if ogg_write_half.write_all(&bin[1..]).await.is_err() {
-                                    break; // decode_task exited; shutdown
-                                }
-                            }
-                            mt::TEXT => {
-                                let text = String::from_utf8_lossy(&bin[1..]).into_owned();
-                                let _ = text_tx.send(text).await;
-                            }
-                            mt::ERROR => {
-                                let msg = String::from_utf8_lossy(&bin[1..]);
-                                tracing::error!(moshi_error = %msg, "Moshi server error");
-                            }
-                            _ => {}
+                    Ok(Message::Binary(bin)) if !bin.is_empty() => match bin[0] {
+                        mt::AUDIO if ogg_write_half.write_all(&bin[1..]).await.is_err() => {
+                            break; // decode_task exited; shutdown
                         }
-                    }
+                        mt::AUDIO => {}
+                        mt::TEXT => {
+                            let text = String::from_utf8_lossy(&bin[1..]).into_owned();
+                            let _ = text_tx.send(text).await;
+                        }
+                        mt::ERROR => {
+                            let msg = String::from_utf8_lossy(&bin[1..]);
+                            tracing::error!(moshi_error = %msg, "Moshi server error");
+                        }
+                        _ => {}
+                    },
                     Ok(Message::Close(_)) | Err(_) => break,
                     _ => {}
                 }
