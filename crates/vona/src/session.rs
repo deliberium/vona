@@ -96,10 +96,9 @@ pub enum SessionError {
 ///
 /// # Metrics populated
 /// - `time_to_first_audio_ms`: instant of the first non-empty output frame
-/// - `interruptions`: each `PausedForInterruption` state transition
+/// - `interruptions`: each backend-emitted `ControlEvent::Interruption`
 /// - `tool_calls`: each `SkillAttempt` emitted from `RuntimeDecision::InjectContext`
 /// - `fallback_count`: each `RuntimeDecision::Fallback` returned from runtime
-#[allow(unused_assignments)]
 pub async fn run_session<T, B, P, E>(
     transport: T,
     backend: &B,
@@ -116,7 +115,6 @@ where
     let mut backend_session = backend.start_session(config.clone()).await?;
     let mut metrics = SessionMetrics::default();
     let session_start = Instant::now();
-    let mut state = SessionState::Idle;
 
     loop {
         // Receive input from transport
@@ -141,8 +139,6 @@ where
             }
         };
 
-        state = SessionState::Listening;
-
         let step = match backend.step(&mut backend_session, frame).await {
             Ok(step) => step,
             Err(err) => {
@@ -155,12 +151,9 @@ where
             }
         };
 
-        state = SessionState::Generating;
-
         // Track time to first audio
         if metrics.time_to_first_audio_ms.is_none() && !step.output_audio.is_empty() {
-            metrics.time_to_first_audio_ms =
-                Some(session_start.elapsed().as_millis() as u64);
+            metrics.time_to_first_audio_ms = Some(session_start.elapsed().as_millis() as u64);
         }
 
         // Send output audio frames
@@ -184,8 +177,9 @@ where
                 metadata: Value::Null,
             };
 
-            if let ControlEvent::SkillCall(_) = &control_event {
-                state = SessionState::ExecutingSkill;
+            if let ControlEvent::Interruption { .. } = &control_event {
+                metrics.interruptions += 1;
+                transport.clear_output().await.ok();
             }
 
             let decision = match runtime
@@ -199,10 +193,7 @@ where
             match decision {
                 RuntimeDecision::InjectContext(ctx_event) => {
                     metrics.tool_calls += 1;
-                    if let Err(err) = backend
-                        .inject_event(&mut backend_session, ctx_event)
-                        .await
-                    {
+                    if let Err(err) = backend.inject_event(&mut backend_session, ctx_event).await {
                         tracing_fallback(&err.to_string());
                     }
                 }
@@ -212,20 +203,12 @@ where
                         // Record timeout audit event through the session's audit path.
                         // (If caller wired an AuditSink into SkillRegistry it already fired.)
                     }
-                    state = SessionState::FallingBackToBridge;
                 }
                 RuntimeDecision::Ignore | RuntimeDecision::Continue => {}
             }
         }
 
-        // Check for interruption state transition
-        if state == SessionState::PausedForInterruption {
-            metrics.interruptions += 1;
-            transport.clear_output().await.ok();
-        }
-
         if step.finished {
-            state = SessionState::Closed;
             let _ = backend.end_session(backend_session).await;
             return Ok(SessionSummary {
                 session_id,
@@ -233,8 +216,6 @@ where
                 close_reason: SessionCloseReason::BackendFinished,
             });
         }
-
-        state = SessionState::Idle;
     }
 }
 
@@ -246,4 +227,3 @@ fn tracing_fallback(msg: &str) {
     #[cfg(debug_assertions)]
     eprintln!("[vona] inject_event error: {msg}");
 }
-

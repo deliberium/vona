@@ -206,10 +206,23 @@ impl SkillExecutor for SkillRegistry {
 
 fn truncate_json_summary(value: &Value, max_chars: usize) -> String {
     let s = value.to_string();
-    if s.len() <= max_chars {
+    if s.chars().count() <= max_chars {
         s
     } else {
-        format!("{}…", &s[..max_chars])
+        format!("{}…", s.chars().take(max_chars).collect::<String>())
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::truncate_json_summary;
+    use serde_json::json;
+
+    #[test]
+    fn truncate_json_summary_preserves_utf8_boundaries() {
+        let summary = truncate_json_summary(&json!({"text": "hello 🌍 Привет"}), 14);
+
+        assert!(summary.ends_with('…'));
+        assert!(summary.is_char_boundary(summary.len()));
+    }
+}

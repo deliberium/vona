@@ -2,7 +2,7 @@ use crate::skills::{SkillError, SkillExecutor};
 use crate::types::{AuditEvent, AuditEventKind, ControlEvent, ExternalContextEvent, SkillContext};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tokio::time::{timeout, Duration};
+use tokio::time::{Duration, timeout};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -127,9 +127,9 @@ where
                     }
                 }
             }
-            ControlEvent::TranscriptFragment { .. } | ControlEvent::Diagnostic { .. } => {
-                Ok(RuntimeDecision::Continue)
-            }
+            ControlEvent::TranscriptFragment { .. }
+            | ControlEvent::Interruption { .. }
+            | ControlEvent::Diagnostic { .. } => Ok(RuntimeDecision::Continue),
         }
     }
 
@@ -145,21 +145,19 @@ where
         if let RuntimeDecision::Fallback {
             reason: FallbackReason::ToolTimeout,
         } = &decision
+            && let ControlEvent::SkillCall(call) = event
         {
-            if let ControlEvent::SkillCall(call) = event {
-                audit_sink
-                    .record(AuditEvent::now(
-                        &context.session_id,
-                        AuditEventKind::ToolTimeout {
-                            name: call.name.clone(),
-                            budget_ms: self.policy.max_tool_latency_ms(),
-                        },
-                    ))
-                    .await;
-            }
+            audit_sink
+                .record(AuditEvent::now(
+                    &context.session_id,
+                    AuditEventKind::ToolTimeout {
+                        name: call.name.clone(),
+                        budget_ms: self.policy.max_tool_latency_ms(),
+                    },
+                ))
+                .await;
         }
 
         Ok(decision)
     }
 }
-

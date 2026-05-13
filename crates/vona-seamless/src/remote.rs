@@ -357,4 +357,3 @@ mod tests {
         assert!(backend.end_session(session).await.is_ok());
     }
 }
-

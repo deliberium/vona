@@ -6,7 +6,10 @@ use crate::remote::{
 use async_trait::async_trait;
 use reqwest::Client;
 use std::time::Duration;
-use vona::{BackendCapabilities, BackendError, BackendStep, ExternalContextEvent, SessionConfig, SpeechToSpeechBackend};
+use vona::{
+    BackendCapabilities, BackendError, BackendStep, ExternalContextEvent, SessionConfig,
+    SpeechToSpeechBackend,
+};
 
 #[derive(Debug, Clone)]
 pub struct SeamlessM4tHttpConfig {

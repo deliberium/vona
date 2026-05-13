@@ -1,8 +1,14 @@
 # Local Mock Example
 
-This example slot is reserved for the first end-to-end in-process mock transport demo.
+The fastest model-free demo lives in `vona-test-harness`:
 
-This example directory now pairs with committed waveform fixtures under `vona-rs/tests/fixtures/`.
+```bash
+cargo run -p vona-test-harness --example mock_session --locked
+```
+
+It runs a complete scripted Vona session with audio output, a mock skill call, context injection, interruption handling, and printed session metrics.
+
+This example directory pairs with committed waveform fixtures under `vona-rs/tests/fixtures/`.
 
 Use the deterministic loopback harness in `vona-test-harness` to validate fixture replay and in-process latency:
 
@@ -15,4 +21,3 @@ The current fixtures are intentionally tiny and deterministic:
 
 - `sine-16khz-mono.json` validates sample-shape preservation.
 - `impulse-16khz-mono.json` validates low-latency loopback behavior.
-  Initial implementation work is focused on the core crates and Deliberium runtime seam.

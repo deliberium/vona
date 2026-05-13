@@ -269,3 +269,52 @@ async fn scripted_transport_loopback_latency_stays_low_for_fixture_audio() {
         "expected in-process loopback under 50ms, got {elapsed_ms}ms"
     );
 }
+
+#[tokio::test]
+async fn run_session_counts_interruption_and_clears_buffered_output() {
+    use vona::runtime::{FillerStrategy, VonaRuntime};
+    use vona::session::run_session;
+
+    let transport = ScriptedTransport::default();
+    transport.push_input(AudioInputFrame {
+        sequence: 1,
+        sample_rate_hz: 24_000,
+        channels: 1,
+        samples: vec![0.0; 160],
+    });
+
+    let backend = MockBackend::default();
+    backend.push_step(BackendStep {
+        output_audio: vec![AudioOutputFrame {
+            sequence: 1,
+            sample_rate_hz: 24_000,
+            channels: 1,
+            samples: vec![0.25; 160],
+            is_filler: false,
+        }],
+        control_events: vec![ControlEvent::Interruption {
+            reason: Some("barge_in".to_string()),
+        }],
+        transcript: None,
+        finished: true,
+        debug_payload: None,
+    });
+
+    let runtime = VonaRuntime::new(
+        Arc::new(EchoSkillExecutor),
+        Arc::new(AllowAllPolicy),
+        FillerStrategy::None,
+    );
+
+    let summary = run_session(
+        transport.clone(),
+        &backend,
+        &runtime,
+        SessionConfig::default(),
+    )
+    .await
+    .expect("session should complete");
+
+    assert_eq!(summary.metrics.interruptions, 1);
+    assert!(transport.sent_frames().is_empty());
+}

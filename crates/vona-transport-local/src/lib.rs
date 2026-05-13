@@ -20,8 +20,8 @@ const MAX_FRAME_BYTES: u32 = 4 * 1024 * 1024;
 #[derive(Debug, Error)]
 #[error("frame too large: {bytes} bytes exceeds {limit} byte limit")]
 pub struct FrameTooLarge {
-    pub bytes: u32,
-    pub limit: u32,
+    pub bytes: usize,
+    pub limit: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +37,15 @@ where
 {
     let payload = to_vec(value)
         .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err.to_string()))?;
+    if payload.len() > MAX_FRAME_BYTES as usize {
+        return Err(std::io::Error::new(
+            ErrorKind::InvalidData,
+            FrameTooLarge {
+                bytes: payload.len(),
+                limit: MAX_FRAME_BYTES as usize,
+            },
+        ));
+    }
     writer.write_u32_le(payload.len() as u32).await?;
     writer.write_all(&payload).await?;
     writer.flush().await?;
@@ -57,7 +66,10 @@ where
     if frame_len > MAX_FRAME_BYTES {
         return Err(std::io::Error::new(
             ErrorKind::InvalidData,
-            FrameTooLarge { bytes: frame_len, limit: MAX_FRAME_BYTES },
+            FrameTooLarge {
+                bytes: frame_len as usize,
+                limit: MAX_FRAME_BYTES as usize,
+            },
         ));
     }
 
@@ -66,6 +78,43 @@ where
     let decoded = from_slice(&payload)
         .map_err(|err| std::io::Error::new(ErrorKind::InvalidData, err.to_string()))?;
     Ok(Some(decoded))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_FRAME_BYTES, read_length_prefixed_frame, write_length_prefixed_frame};
+    use std::io::ErrorKind;
+    use tokio::io::AsyncWriteExt;
+
+    #[tokio::test]
+    async fn write_length_prefixed_frame_rejects_oversized_payloads() {
+        let (mut client, _server) = tokio::io::duplex(64);
+        let oversized = vec![0_u8; MAX_FRAME_BYTES as usize + 1];
+
+        let err = write_length_prefixed_frame(&mut client, &oversized)
+            .await
+            .expect_err("oversized payload should be rejected");
+
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+        assert!(err.to_string().contains("frame too large"));
+    }
+
+    #[tokio::test]
+    async fn read_length_prefixed_frame_rejects_oversized_payloads() {
+        let (mut client, mut server) = tokio::io::duplex(64);
+
+        let writer = tokio::spawn(async move {
+            client.write_u32_le(MAX_FRAME_BYTES + 1).await.unwrap();
+        });
+
+        let err = read_length_prefixed_frame::<_, Vec<u8>>(&mut server)
+            .await
+            .expect_err("oversized frame header should be rejected");
+
+        writer.await.unwrap();
+        assert_eq!(err.kind(), ErrorKind::InvalidData);
+        assert!(err.to_string().contains("frame too large"));
+    }
 }
 
 #[derive(Debug, Clone)]

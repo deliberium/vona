@@ -38,6 +38,7 @@ pub struct SkillContext {
 pub enum ControlEvent {
     SkillCall(SkillCall),
     TranscriptFragment { text: String, final_fragment: bool },
+    Interruption { reason: Option<String> },
     Diagnostic { message: String },
 }
 

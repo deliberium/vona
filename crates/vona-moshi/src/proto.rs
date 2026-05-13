@@ -64,6 +64,9 @@ mod tests {
     #[test]
     fn opus_frame_samples_is_40ms_at_24k() {
         // 40 ms × 24 000 Hz = 960 samples.
-        assert_eq!(OPUS_FRAME_SAMPLES, (MOSHI_SAMPLE_RATE as usize) * 40 / 1_000);
+        assert_eq!(
+            OPUS_FRAME_SAMPLES,
+            (MOSHI_SAMPLE_RATE as usize) * 40 / 1_000
+        );
     }
 }

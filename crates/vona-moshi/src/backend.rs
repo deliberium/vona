@@ -31,7 +31,7 @@
 //! ```
 
 use crate::config::MoshiConfig;
-use crate::proto::{ctrl, mt, OGG_SERIAL, MOSHI_SAMPLE_RATE, OPUS_FRAME_SAMPLES};
+use crate::proto::{MOSHI_SAMPLE_RATE, OGG_SERIAL, OPUS_FRAME_SAMPLES, ctrl, mt};
 use async_trait::async_trait;
 use byteorder::WriteBytesExt;
 use futures_util::{SinkExt, StreamExt};
@@ -49,9 +49,8 @@ use vona::{
 
 // ── WebSocket type aliases ──────────────────────────────────────────────────
 
-type WsStream = tokio_tungstenite::WebSocketStream<
-    tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
->;
+type WsStream =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 type WsSink = futures_util::stream::SplitSink<WsStream, Message>;
 type SharedWsTx = Arc<tokio::sync::Mutex<WsSink>>;
 
@@ -223,11 +222,11 @@ impl SpeechToSpeechBackend for MoshiBackend {
                     ));
                 }
                 Some(Err(e)) => {
-                    return Err(BackendError::Start(format!("WS error during handshake: {e}")));
+                    return Err(BackendError::Start(format!(
+                        "WS error during handshake: {e}"
+                    )));
                 }
-                Some(Ok(Message::Binary(bin)))
-                    if !bin.is_empty() && bin[0] == mt::HANDSHAKE =>
-                {
+                Some(Ok(Message::Binary(bin))) if !bin.is_empty() && bin[0] == mt::HANDSHAKE => {
                     // Respond with our own handshake
                     let mut reply = vec![mt::HANDSHAKE];
                     reply.extend_from_slice(&0u32.to_le_bytes()); // protocol version
@@ -237,9 +236,7 @@ impl SpeechToSpeechBackend for MoshiBackend {
                         .await
                         .send(Message::Binary(reply))
                         .await
-                        .map_err(|e| {
-                            BackendError::Start(format!("handshake send failed: {e}"))
-                        })?;
+                        .map_err(|e| BackendError::Start(format!("handshake send failed: {e}")))?;
                     break;
                 }
                 // Ignore pings / text before handshake completes
@@ -326,9 +323,12 @@ impl SpeechToSpeechBackend for MoshiBackend {
         });
 
         // ── Encoder + OGG muxer (outgoing path) ────────────────────────────
-        let encoder =
-            opus::Encoder::new(MOSHI_SAMPLE_RATE, opus::Channels::Mono, opus::Application::Voip)
-                .map_err(|e| BackendError::Start(format!("Opus encoder init: {e}")))?;
+        let encoder = opus::Encoder::new(
+            MOSHI_SAMPLE_RATE,
+            opus::Channels::Mono,
+            opus::Application::Voip,
+        )
+        .map_err(|e| BackendError::Start(format!("Opus encoder init: {e}")))?;
 
         let mut ogg_writer = ogg::PacketWriter::new(Vec::new());
 
@@ -394,9 +394,10 @@ impl SpeechToSpeechBackend for MoshiBackend {
             let size = {
                 let enc = &session.encoder;
                 let buf = &mut session.encode_buf;
-                enc.lock().unwrap()
+                enc.lock()
+                    .unwrap()
                     .encode_float(&chunk, buf)
-                    .map_err(|e| BackendError::Step(format!("Opus encode: {e}")))?            
+                    .map_err(|e| BackendError::Step(format!("Opus encode: {e}")))?
             };
 
             if size > 0 {
@@ -498,7 +499,10 @@ mod tests {
         };
         let backend = MoshiBackend::new(cfg.clone());
         assert_eq!(backend.config.url, cfg.url);
-        assert_eq!(backend.config.accept_invalid_certs, cfg.accept_invalid_certs);
+        assert_eq!(
+            backend.config.accept_invalid_certs,
+            cfg.accept_invalid_certs
+        );
     }
 
     // ── capabilities() — no network required ────────────────────────────────
@@ -542,10 +546,7 @@ mod tests {
             "expected BackendError when Moshi server is not reachable"
         );
         if let Err(BackendError::Start(msg)) = result {
-            assert!(
-                !msg.is_empty(),
-                "error message should describe the failure"
-            );
+            assert!(!msg.is_empty(), "error message should describe the failure");
         }
     }
 }

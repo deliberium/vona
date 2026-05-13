@@ -32,9 +32,7 @@ impl SeamlessM4tOnnxRuntime {
             })?
             .commit_from_file(model_path)
             .map_err(|err| {
-                BackendError::Start(format!(
-                    "failed to load ONNX model at {model_path}: {err}"
-                ))
+                BackendError::Start(format!("failed to load ONNX model at {model_path}: {err}"))
             })?;
 
         Ok(Self {
@@ -80,7 +78,9 @@ impl SeamlessM4tOnnxRuntime {
         Ok(tensor
             .view()
             .into_dimensionality::<IxDyn>()
-            .map_err(|err| BackendError::Step(format!("onnx output dimension conversion failed: {err}")))?
+            .map_err(|err| {
+                BackendError::Step(format!("onnx output dimension conversion failed: {err}"))
+            })?
             .iter()
             .copied()
             .collect())
@@ -150,10 +150,7 @@ mod tests {
         let input = vec![1.0f32; 64];
         let output = resample_mono(&input, 8_000, 24_000);
         for &sample in &output {
-            assert!(
-                (sample - 1.0).abs() < 1e-5,
-                "expected 1.0 but got {sample}"
-            );
+            assert!((sample - 1.0).abs() < 1e-5, "expected 1.0 but got {sample}");
         }
     }
 

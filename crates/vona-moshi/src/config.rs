@@ -46,9 +46,7 @@ impl MoshiConfig {
         Self {
             url: std::env::var("MOSHI_URL")
                 .unwrap_or_else(|_| "wss://127.0.0.1:8998/api/chat".into()),
-            accept_invalid_certs: std::env::var("MOSHI_ACCEPT_INVALID_CERTS")
-                .ok()
-                .as_deref()
+            accept_invalid_certs: std::env::var("MOSHI_ACCEPT_INVALID_CERTS").ok().as_deref()
                 == Some("1"),
         }
     }
@@ -76,16 +74,22 @@ mod tests {
     #[test]
     fn from_env_picks_up_custom_url() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::set_var("MOSHI_URL", "wss://example.com/api/chat"); }
+        unsafe {
+            std::env::set_var("MOSHI_URL", "wss://example.com/api/chat");
+        }
         let cfg = MoshiConfig::from_env();
-        unsafe { std::env::remove_var("MOSHI_URL"); }
+        unsafe {
+            std::env::remove_var("MOSHI_URL");
+        }
         assert_eq!(cfg.url, "wss://example.com/api/chat");
     }
 
     #[test]
     fn from_env_accept_invalid_certs_off_by_default() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::remove_var("MOSHI_ACCEPT_INVALID_CERTS"); }
+        unsafe {
+            std::env::remove_var("MOSHI_ACCEPT_INVALID_CERTS");
+        }
         let cfg = MoshiConfig::from_env();
         assert!(!cfg.accept_invalid_certs);
     }
@@ -93,9 +97,13 @@ mod tests {
     #[test]
     fn from_env_accept_invalid_certs_enabled_by_one() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::set_var("MOSHI_ACCEPT_INVALID_CERTS", "1"); }
+        unsafe {
+            std::env::set_var("MOSHI_ACCEPT_INVALID_CERTS", "1");
+        }
         let cfg = MoshiConfig::from_env();
-        unsafe { std::env::remove_var("MOSHI_ACCEPT_INVALID_CERTS"); }
+        unsafe {
+            std::env::remove_var("MOSHI_ACCEPT_INVALID_CERTS");
+        }
         assert!(cfg.accept_invalid_certs);
     }
 
@@ -103,9 +111,13 @@ mod tests {
     fn from_env_accept_invalid_certs_not_enabled_by_true() {
         // Only the literal string "1" enables it — "true" should not.
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::set_var("MOSHI_ACCEPT_INVALID_CERTS", "true"); }
+        unsafe {
+            std::env::set_var("MOSHI_ACCEPT_INVALID_CERTS", "true");
+        }
         let cfg = MoshiConfig::from_env();
-        unsafe { std::env::remove_var("MOSHI_ACCEPT_INVALID_CERTS"); }
+        unsafe {
+            std::env::remove_var("MOSHI_ACCEPT_INVALID_CERTS");
+        }
         assert!(!cfg.accept_invalid_certs);
     }
 }

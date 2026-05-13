@@ -13,15 +13,13 @@
 //! cargo bench -p vona-seamless
 //! ```
 
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use vona_seamless::onnx_runtime::resample_mono;
 
 /// Generates a mono sine wave at `freq_hz` with `num_samples` samples.
 fn sine_wave(num_samples: usize, freq_hz: f32, sample_rate_hz: u32) -> Vec<f32> {
     (0..num_samples)
-        .map(|i| {
-            (2.0 * std::f32::consts::PI * freq_hz * i as f32 / sample_rate_hz as f32).sin()
-        })
+        .map(|i| (2.0 * std::f32::consts::PI * freq_hz * i as f32 / sample_rate_hz as f32).sin())
         .collect()
 }
 
@@ -47,11 +45,7 @@ fn bench_resample_mono(c: &mut Criterion) {
             &(src_hz, dst_hz, &input),
             |b, (src, dst, samples)| {
                 b.iter(|| {
-                    criterion::black_box(resample_mono(
-                        criterion::black_box(samples),
-                        *src,
-                        *dst,
-                    ))
+                    criterion::black_box(resample_mono(criterion::black_box(samples), *src, *dst))
                 })
             },
         );
@@ -77,11 +71,7 @@ fn bench_resample_mono_frame_sizes(c: &mut Criterion) {
             &(src_hz, dst_hz, &input),
             |b, (src, dst, samples)| {
                 b.iter(|| {
-                    criterion::black_box(resample_mono(
-                        criterion::black_box(samples),
-                        *src,
-                        *dst,
-                    ))
+                    criterion::black_box(resample_mono(criterion::black_box(samples), *src, *dst))
                 })
             },
         );
@@ -90,5 +80,9 @@ fn bench_resample_mono_frame_sizes(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(resample_benches, bench_resample_mono, bench_resample_mono_frame_sizes);
+criterion_group!(
+    resample_benches,
+    bench_resample_mono,
+    bench_resample_mono_frame_sizes
+);
 criterion_main!(resample_benches);

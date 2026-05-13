@@ -30,8 +30,9 @@ Release readiness is **PASS** only when all items below succeed in a single run.
    - `cargo test -p vona-sidecar --locked`
    - `cargo test -p vona-moshi --locked`
 3. `cargo check --workspace --all-targets --locked` exits with code `0`
-4. Transport benchmark smoke run exits with code `0`
-5. Benchmark log contains all required metrics keys:
+4. `cargo clippy --workspace --all-targets --locked -- -D warnings` exits with code `0`
+5. Transport benchmark smoke run exits with code `0`
+6. Benchmark log contains all required metrics keys:
    - `http_round_trip_avg_ms=`
    - `ipc_round_trip_avg_ms=`
    - `live_latency_ratio_http_over_ipc=`

@@ -59,10 +59,10 @@ export CARGO_TERM_COLOR=always
 unset LIBOPUS_NO_PKG || true
 unset OPUS_NO_PKG || true
 
-log "Step 1/5: cargo check --workspace --locked"
+log "Step 1/6: cargo check --workspace --locked"
 cargo check --workspace --locked
 
-log "Step 2/5: deterministic crate test matrix"
+log "Step 2/6: deterministic crate test matrix"
 cargo test -p vona --locked
 cargo test -p vona-test-harness --locked
 cargo test -p vona-seamless --locked
@@ -70,10 +70,13 @@ cargo test -p vona-transport-local --locked
 cargo test -p vona-sidecar --locked
 cargo test -p vona-moshi --locked
 
-log "Step 3/5: cargo check --workspace --all-targets --locked"
+log "Step 3/6: cargo check --workspace --all-targets --locked"
 cargo check --workspace --all-targets --locked
 
-log "Step 4/5: deterministic transport benchmark smoke run"
+log "Step 4/6: cargo clippy --workspace --all-targets --locked -- -D warnings"
+cargo clippy --workspace --all-targets --locked -- -D warnings
+
+log "Step 5/6: deterministic transport benchmark smoke run"
 BENCH_OUTPUT_FILE="${ROOT_DIR}/target/release-gate-transport-bench.log"
 cargo run --release -p vona-transport-local --example seamless_m4t_transport_bench -- \
   --iterations=8 \
@@ -95,7 +98,7 @@ if ! grep -q "live_latency_ratio_http_over_ipc=" "$BENCH_OUTPUT_FILE"; then
   exit 1
 fi
 
-log "Step 5/5: writing docs/benchmark-results.md"
+log "Step 6/6: writing docs/benchmark-results.md"
 
 RESAMPLE_LOG="${ROOT_DIR}/target/release-gate-resample-bench.log"
 SLO_LOG="${ROOT_DIR}/target/release-gate-slo-bench.log"

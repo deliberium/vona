@@ -13,17 +13,31 @@ Thank you for your interest in contributing!
    bash scripts/release_gate.sh
    ```
 
+If Opus is installed in a non-standard prefix, set `LIBOPUS_LIB_DIR` to the prefix path:
+
+```bash
+export LIBOPUS_LIB_DIR=/opt/homebrew
+```
+
+You can also run the model-free end-to-end demo:
+
+```bash
+cargo run -p vona-test-harness --example mock_session --locked
+```
+
 ## Development Workflow
 
 - All changes must keep `bash scripts/release_gate.sh` green.
 - New adapter crates go under `crates/` and must not add internal dependencies to `deliberium`.
 - Keep crates focused: core traits in `vona`, provider adapters in separate crates.
+- Keep examples deterministic unless they are explicitly marked as requiring external services or model artifacts.
+- Document new adapter maturity in `docs/adapter-maturity.md`.
 
 ## Pull Requests
 
 - Target the `main` branch.
 - Include a clear description of what changes and why.
-- Keep PRs small and focused — one feature or fix per PR.
+- Keep PRs small and focused: one feature or fix per PR.
 - All CI checks must pass before merge.
 
 ## Tests
@@ -39,6 +53,12 @@ Run all compile-checked targets:
 
 ```bash
 cargo check --workspace --all-targets --locked
+```
+
+Run clippy with the same strictness as the release gate:
+
+```bash
+cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
 ## Bug Reports & Feature Requests

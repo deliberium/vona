@@ -18,10 +18,10 @@
 //! cargo bench -p vona-test-harness
 //! ```
 
-use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
 use vona::{
-    transport::AudioTransport, AudioInputFrame, AudioOutputFrame, BackendStep,
-    SpeechToSpeechBackend, SessionConfig,
+    AudioInputFrame, AudioOutputFrame, BackendStep, SessionConfig, SpeechToSpeechBackend,
+    transport::AudioTransport,
 };
 use vona_test_harness::{MockBackend, ScriptedTransport};
 
@@ -65,30 +65,24 @@ fn bench_backend_step_latency(c: &mut Criterion) {
     let mut group = c.benchmark_group("backend_step");
 
     for num_samples in [160usize, 320, 960, 3_840] {
-        group.bench_with_input(
-            format!("{num_samples}_samples"),
-            &num_samples,
-            |b, &n| {
-                b.iter_batched(
-                    || {
-                        let backend = MockBackend::default();
-                        backend.push_step(dummy_output_step(n));
-                        let session = runtime
-                            .block_on(backend.start_session(SessionConfig::default()))
-                            .unwrap();
-                        (backend, session, dummy_input_frame(n))
-                    },
-                    |(backend, mut session, frame)| {
-                        runtime.block_on(async {
-                            criterion::black_box(
-                                backend.step(&mut session, frame).await.unwrap(),
-                            )
-                        })
-                    },
-                    BatchSize::SmallInput,
-                );
-            },
-        );
+        group.bench_with_input(format!("{num_samples}_samples"), &num_samples, |b, &n| {
+            b.iter_batched(
+                || {
+                    let backend = MockBackend::default();
+                    backend.push_step(dummy_output_step(n));
+                    let session = runtime
+                        .block_on(backend.start_session(SessionConfig::default()))
+                        .unwrap();
+                    (backend, session, dummy_input_frame(n))
+                },
+                |(backend, mut session, frame)| {
+                    runtime.block_on(async {
+                        criterion::black_box(backend.step(&mut session, frame).await.unwrap())
+                    })
+                },
+                BatchSize::SmallInput,
+            );
+        });
     }
     group.finish();
 }
@@ -104,8 +98,14 @@ fn bench_session_lifecycle(c: &mut Criterion) {
             runtime.block_on(async {
                 let backend = MockBackend::default();
                 backend.push_step(dummy_output_step(320));
-                let mut session = backend.start_session(SessionConfig::default()).await.unwrap();
-                let _ = backend.step(&mut session, dummy_input_frame(320)).await.unwrap();
+                let mut session = backend
+                    .start_session(SessionConfig::default())
+                    .await
+                    .unwrap();
+                let _ = backend
+                    .step(&mut session, dummy_input_frame(320))
+                    .await
+                    .unwrap();
                 backend.end_session(session).await.unwrap();
             })
         })
@@ -120,39 +120,35 @@ fn bench_transport_loopback(c: &mut Criterion) {
     let mut group = c.benchmark_group("transport_loopback");
 
     for num_samples in [160usize, 320, 960] {
-        group.bench_with_input(
-            format!("{num_samples}_samples"),
-            &num_samples,
-            |b, &n| {
-                b.iter_batched(
-                    || {
-                        let transport = ScriptedTransport::default();
-                        transport.push_input(AudioInputFrame {
-                            sequence: 0,
-                            sample_rate_hz: 16_000,
-                            channels: 1,
-                            samples: vec![0.0f32; n],
-                        });
-                        transport
-                    },
-                    |transport| {
-                        runtime.block_on(async {
-                            let frame = transport.recv_frame().await.unwrap().unwrap();
-                            let out = AudioOutputFrame {
-                                sequence: frame.sequence,
-                                sample_rate_hz: frame.sample_rate_hz,
-                                channels: frame.channels,
-                                samples: frame.samples,
-                                is_filler: false,
-                            };
-                            transport.send_frame(out).await.unwrap();
-                            criterion::black_box(transport.sent_frames())
-                        })
-                    },
-                    BatchSize::SmallInput,
-                );
-            },
-        );
+        group.bench_with_input(format!("{num_samples}_samples"), &num_samples, |b, &n| {
+            b.iter_batched(
+                || {
+                    let transport = ScriptedTransport::default();
+                    transport.push_input(AudioInputFrame {
+                        sequence: 0,
+                        sample_rate_hz: 16_000,
+                        channels: 1,
+                        samples: vec![0.0f32; n],
+                    });
+                    transport
+                },
+                |transport| {
+                    runtime.block_on(async {
+                        let frame = transport.recv_frame().await.unwrap().unwrap();
+                        let out = AudioOutputFrame {
+                            sequence: frame.sequence,
+                            sample_rate_hz: frame.sample_rate_hz,
+                            channels: frame.channels,
+                            samples: frame.samples,
+                            is_filler: false,
+                        };
+                        transport.send_frame(out).await.unwrap();
+                        criterion::black_box(transport.sent_frames())
+                    })
+                },
+                BatchSize::SmallInput,
+            );
+        });
     }
     group.finish();
 }

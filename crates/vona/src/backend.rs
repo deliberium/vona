@@ -28,25 +28,13 @@ impl Default for BackendCapabilities {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct BackendStep {
     pub output_audio: Vec<AudioOutputFrame>,
     pub control_events: Vec<ControlEvent>,
     pub transcript: Option<String>,
     pub finished: bool,
     pub debug_payload: Option<Value>,
-}
-
-impl Default for BackendStep {
-    fn default() -> Self {
-        Self {
-            output_audio: Vec::new(),
-            control_events: Vec::new(),
-            transcript: None,
-            finished: false,
-            debug_payload: None,
-        }
-    }
 }
 
 #[derive(Debug, Error)]

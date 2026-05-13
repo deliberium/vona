@@ -1,4 +1,5 @@
 use anyhow::Context;
+use axum::extract::DefaultBodyLimit;
 use axum::{
     Json, Router,
     extract::State,
@@ -7,7 +8,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use axum::extract::DefaultBodyLimit;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -45,8 +45,9 @@ async fn process_step_request(
     let input_sample_count = request.input_samples.len();
     let mut session = {
         let mut sessions = state.sessions.lock().await;
-        sessions.remove(&request.session_id).unwrap_or_else(|| {
-            SeamlessM4tLocalSession {
+        sessions
+            .remove(&request.session_id)
+            .unwrap_or_else(|| SeamlessM4tLocalSession {
                 config: SessionConfig {
                     session_id: request.session_id.clone(),
                     sample_rate_hz: request.sample_rate_hz,
@@ -55,8 +56,7 @@ async fn process_step_request(
                     metadata: request.session_metadata.clone(),
                 },
                 pending_events: Vec::new(),
-            }
-        })
+            })
     };
 
     for event in request.pending_events {
@@ -298,8 +298,8 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
 
-    let bind = std::env::var("VONA_STS_SIDECAR_BIND")
-        .unwrap_or_else(|_| "127.0.0.1:9090".to_string());
+    let bind =
+        std::env::var("VONA_STS_SIDECAR_BIND").unwrap_or_else(|_| "127.0.0.1:9090".to_string());
     let ipc_socket_path = std::env::var("VONA_STS_SIDECAR_UNIX_SOCKET")
         .ok()
         .map(|value| value.trim().to_string())

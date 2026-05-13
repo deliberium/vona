@@ -92,10 +92,10 @@ impl SeamlessM4tLocalConfig {
                 config.source_language = Some(value.to_string());
             }
         }
-        if let Ok(value) = std::env::var("VONA_STS_SPEAKER_ID") {
-            if let Ok(parsed) = value.trim().parse() {
-                config.speaker_id = parsed;
-            }
+        if let Ok(value) = std::env::var("VONA_STS_SPEAKER_ID")
+            && let Ok(parsed) = value.trim().parse()
+        {
+            config.speaker_id = parsed;
         }
         if let Ok(value) = std::env::var("VONA_STS_ONNX_MODEL_PATH") {
             let value = value.trim();
@@ -158,7 +158,8 @@ impl SeamlessM4tLocalBackend {
                 InboundControlKind::TranscriptOverride(text) => {
                     transcript_override = Some(text);
                 }
-                InboundControlKind::PlanResult(text) | InboundControlKind::PrecomputedReply(text) => {
+                InboundControlKind::PlanResult(text)
+                | InboundControlKind::PrecomputedReply(text) => {
                     reply_text = Some(text);
                 }
                 InboundControlKind::Unknown => {}
@@ -267,27 +268,39 @@ mod tests {
     #[test]
     fn config_from_env_picks_up_model_path() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::set_var("VONA_STS_ONNX_MODEL_PATH", "/tmp/test_model.onnx"); }
+        unsafe {
+            std::env::set_var("VONA_STS_ONNX_MODEL_PATH", "/tmp/test_model.onnx");
+        }
         let cfg = SeamlessM4tLocalConfig::from_env();
-        unsafe { std::env::remove_var("VONA_STS_ONNX_MODEL_PATH"); }
+        unsafe {
+            std::env::remove_var("VONA_STS_ONNX_MODEL_PATH");
+        }
         assert_eq!(cfg.onnx_model_path.as_deref(), Some("/tmp/test_model.onnx"));
     }
 
     #[test]
     fn config_from_env_ignores_blank_model_path() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::set_var("VONA_STS_ONNX_MODEL_PATH", "   "); }
+        unsafe {
+            std::env::set_var("VONA_STS_ONNX_MODEL_PATH", "   ");
+        }
         let cfg = SeamlessM4tLocalConfig::from_env();
-        unsafe { std::env::remove_var("VONA_STS_ONNX_MODEL_PATH"); }
+        unsafe {
+            std::env::remove_var("VONA_STS_ONNX_MODEL_PATH");
+        }
         assert!(cfg.onnx_model_path.is_none());
     }
 
     #[test]
     fn config_from_env_parses_sample_rate() {
         let _guard = ENV_LOCK.lock().unwrap();
-        unsafe { std::env::set_var("VONA_STS_ONNX_SAMPLE_RATE", "48000"); }
+        unsafe {
+            std::env::set_var("VONA_STS_ONNX_SAMPLE_RATE", "48000");
+        }
         let cfg = SeamlessM4tLocalConfig::from_env();
-        unsafe { std::env::remove_var("VONA_STS_ONNX_SAMPLE_RATE"); }
+        unsafe {
+            std::env::remove_var("VONA_STS_ONNX_SAMPLE_RATE");
+        }
         assert_eq!(cfg.onnx_sample_rate_hz, 48_000);
     }
 
@@ -297,10 +310,7 @@ mod tests {
     fn backend_new_fails_without_model_path() {
         let cfg = SeamlessM4tLocalConfig::default(); // onnx_model_path = None
         let result = SeamlessM4tLocalBackend::new(cfg);
-        assert!(
-            result.is_err(),
-            "expected Err when onnx_model_path is None"
-        );
+        assert!(result.is_err(), "expected Err when onnx_model_path is None");
         if let Err(BackendError::Start(msg)) = result {
             assert!(
                 msg.contains("VONA_STS_ONNX_MODEL_PATH"),
