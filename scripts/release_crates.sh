@@ -65,7 +65,6 @@ publish_crate() {
 
   if [[ "$SKIP_PUBLISHED" -eq 1 ]] && crate_version_exists "$crate" "$VERSION"; then
     echo "${crate} v${VERSION} is already published; skipping."
-    wait_for_crate_available "$crate" "$VERSION"
     return 0
   fi
 
@@ -73,14 +72,13 @@ publish_crate() {
   for attempt in $(seq 1 18); do
     echo "Publishing ${crate} (attempt ${attempt}/18)"
     if cargo publish -p "$crate" "${COMMON_ARGS[@]}" 2>&1 | tee "$log_file"; then
-      wait_for_crate_available "$crate" "$VERSION"
+      echo "${crate} v${VERSION} published."
       rm -f "$log_file"
       return 0
     fi
 
     if [[ "$SKIP_PUBLISHED" -eq 1 ]] && grep -Eiq "already uploaded|already exists|is already published" "$log_file"; then
-      echo "${crate} v${VERSION} was already published; continuing."
-      wait_for_crate_available "$crate" "$VERSION"
+      echo "${crate} v${VERSION} is already present in the crates.io index; continuing."
       rm -f "$log_file"
       return 0
     fi
