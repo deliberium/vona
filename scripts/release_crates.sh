@@ -9,6 +9,7 @@ PUBLISH=0
 SKIP_GATE=0
 ALLOW_DIRTY=0
 BOOTSTRAP=0
+SKIP_PUBLISHED=0
 
 usage() {
   cat <<'USAGE'
@@ -22,6 +23,7 @@ Options:
   --skip-gate                         Skip scripts/release_gate.sh.
   --allow-dirty                       Pass --allow-dirty to cargo package/publish.
   --bootstrap                         Allow dry-run packaging to stop at unpublished workspace deps.
+  --skip-published                    During publish, skip crate versions already present on crates.io.
   -h, --help                          Show this help.
 
 Environment:
@@ -34,16 +36,65 @@ wait_for_crate_available() {
   local version="$2"
   local attempt
 
-  for attempt in $(seq 1 18); do
-    if cargo search "$crate" --limit 10 2>/dev/null | grep -q "^${crate} = \"${version}\""; then
-      echo "${crate} v${version} is visible in the crates.io index"
+  for attempt in $(seq 1 30); do
+    if crate_version_exists "$crate" "$version"; then
+      echo "${crate} v${version} is visible on crates.io"
       return 0
     fi
-    echo "Waiting for ${crate} v${version} to appear in crates.io index (${attempt}/18)"
+    echo "Waiting for ${crate} v${version} to appear on crates.io (${attempt}/30)"
     sleep 10
   done
 
-  echo "Timed out waiting for ${crate} v${version} to appear in crates.io index" >&2
+  echo "Timed out waiting for ${crate} v${version} to appear on crates.io" >&2
+  return 1
+}
+
+crate_version_exists() {
+  local crate="$1"
+  local version="$2"
+
+  curl -fsS "https://crates.io/api/v1/crates/${crate}/${version}" >/dev/null 2>&1
+}
+
+publish_crate() {
+  local crate="$1"
+  local attempt
+  local log_file
+
+  if [[ "$SKIP_PUBLISHED" -eq 1 ]] && crate_version_exists "$crate" "$VERSION"; then
+    echo "${crate} v${VERSION} is already published; skipping."
+    wait_for_crate_available "$crate" "$VERSION"
+    return 0
+  fi
+
+  log_file="$(mktemp)"
+  for attempt in $(seq 1 18); do
+    echo "Publishing ${crate} (attempt ${attempt}/18)"
+    if cargo publish -p "$crate" "${COMMON_ARGS[@]}" 2>&1 | tee "$log_file"; then
+      wait_for_crate_available "$crate" "$VERSION"
+      rm -f "$log_file"
+      return 0
+    fi
+
+    if [[ "$SKIP_PUBLISHED" -eq 1 ]] && grep -Eiq "already uploaded|already exists|is already published" "$log_file"; then
+      echo "${crate} v${VERSION} was already published; continuing."
+      wait_for_crate_available "$crate" "$VERSION"
+      rm -f "$log_file"
+      return 0
+    fi
+
+    if grep -Eiq "no matching package named|failed to select a version|required by package" "$log_file"; then
+      echo "Dependency index is not ready for ${crate}; retrying after a short wait." >&2
+      sleep 20
+      continue
+    fi
+
+    rm -f "$log_file"
+    return 1
+  done
+
+  echo "Timed out publishing ${crate} after dependency-index retries." >&2
+  rm -f "$log_file"
   return 1
 }
 
@@ -67,6 +118,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --bootstrap)
       BOOTSTRAP=1
+      shift
+      ;;
+    --skip-published)
+      SKIP_PUBLISHED=1
       shift
       ;;
     -h|--help)
@@ -216,9 +271,7 @@ fi
 
 if [[ "$PUBLISH" -eq 1 ]]; then
   for crate in "${CRATES[@]}"; do
-    echo "Publishing ${crate}"
-    cargo publish -p "$crate" "${COMMON_ARGS[@]}"
-    wait_for_crate_available "$crate" "$VERSION"
+    publish_crate "$crate"
   done
 else
   for crate in "${CRATES[@]}"; do
