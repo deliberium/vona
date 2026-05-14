@@ -59,6 +59,7 @@ Realtime adapters should map provider-native events into:
 - `RealtimeVoiceOutput::ToolCall`
 - `RealtimeVoiceOutput::Interruption`
 - `RealtimeVoiceOutput::LatencyMark`
+- `RealtimeVoiceOutput::ResponseCompleted`
 - `RealtimeVoiceOutput::Closed`
 
 Adapters should include deterministic tests for event ordering, barge-in, tool-call propagation, context injection, and close semantics without requiring live services.

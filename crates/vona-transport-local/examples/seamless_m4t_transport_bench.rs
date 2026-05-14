@@ -58,6 +58,7 @@ impl BenchConfig {
 
 fn mock_response(request: &SeamlessM4tRemoteStepRequest) -> SeamlessM4tRemoteStepResponse {
     SeamlessM4tRemoteStepResponse {
+        output_frames: vec![],
         output_samples: vec![0.0; request.input_samples.len().clamp(32, 160)],
         output_sample_rate_hz: 16_000,
         transcript: Some("benchmark transcript".to_string()),

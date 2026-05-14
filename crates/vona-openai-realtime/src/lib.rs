@@ -214,7 +214,7 @@ pub fn server_event_to_output(
                 final_fragment: false,
             }))
         }
-        "response.done" => Ok(Some(RealtimeVoiceOutput::Closed {
+        "response.done" => Ok(Some(RealtimeVoiceOutput::ResponseCompleted {
             reason: Some("response.done".to_string()),
         })),
         _ => Ok(None),
@@ -298,6 +298,18 @@ mod tests {
                 samples: vec![0.0, 32767.0 / 32768.0, -1.0],
                 is_filler: false,
             })
+        );
+    }
+
+    #[test]
+    fn response_done_does_not_close_session() {
+        let event = json!({ "type": "response.done" });
+        let output = server_event_to_output(&event).unwrap().unwrap();
+        assert_eq!(
+            output,
+            RealtimeVoiceOutput::ResponseCompleted {
+                reason: Some("response.done".to_string())
+            }
         );
     }
 }

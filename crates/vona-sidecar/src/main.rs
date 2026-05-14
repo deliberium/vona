@@ -111,17 +111,13 @@ async fn process_step_request(
             .insert(request.session_id, session);
     }
 
-    let frame = step.output_audio.first().cloned();
+    let output_frames = step.output_audio;
+    let frame = output_frames.first();
 
     Ok(SeamlessM4tRemoteStepResponse {
-        output_samples: frame
-            .as_ref()
-            .map(|value| value.samples.clone())
-            .unwrap_or_default(),
-        output_sample_rate_hz: frame
-            .as_ref()
-            .map(|value| value.sample_rate_hz)
-            .unwrap_or(16_000),
+        output_frames: output_frames.clone(),
+        output_samples: frame.map(|value| value.samples.clone()).unwrap_or_default(),
+        output_sample_rate_hz: frame.map(|value| value.sample_rate_hz).unwrap_or(16_000),
         transcript: step.transcript,
         control_events: step.control_events,
         finished: step.finished,

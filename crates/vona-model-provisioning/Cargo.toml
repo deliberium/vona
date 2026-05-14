@@ -13,8 +13,10 @@ description = "Local model provisioning manifests and cache planning for Vona ad
 documentation = "https://docs.rs/vona-model-provisioning"
 
 [dependencies]
-reqwest.workspace = true
+futures-util.workspace = true
+reqwest = { workspace = true, features = ["stream"] }
+ring.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["fs"] }
+tokio = { workspace = true, features = ["fs", "io-util"] }

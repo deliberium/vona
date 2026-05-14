@@ -9,6 +9,8 @@ The initial `vona-model-provisioning` crate provides:
 - `ModelCache` for deriving cache paths and inspecting whether artifacts are present
 - manifest validation that rejects empty file-backed manifests and absolute artifact paths
 - `HttpModelProvisioner` for explicit source-URL downloads into the Vona cache
+- streamed artifact writes through a temporary file followed by atomic rename
+- optional expected-size and SHA-256 verification before an artifact is marked ready
 
 The default cache environment variable is:
 
@@ -20,6 +22,5 @@ The crate can download missing artifacts when the host explicitly calls `HttpMod
 
 Recommended next step:
 
-1. Add checksum enforcement.
-2. Add provider-aware helpers for Hugging Face and Ollama-style local model pulls.
-3. Wire `SeamlessM4tLocalConfig::from_env` through a provisioning plan so missing ONNX artifacts produce actionable setup errors.
+1. Add provider-aware helpers for Hugging Face and Ollama-style local model pulls.
+2. Wire `SeamlessM4tLocalConfig::from_env` through a provisioning plan so missing ONNX artifacts produce actionable setup errors.

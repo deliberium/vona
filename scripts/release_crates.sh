@@ -8,6 +8,7 @@ RELEASE_TYPE="current"
 PUBLISH=0
 SKIP_GATE=0
 ALLOW_DIRTY=0
+BOOTSTRAP=0
 
 usage() {
   cat <<'USAGE'
@@ -20,11 +21,30 @@ Options:
   --publish                           Run cargo publish. Default: package dry-run only.
   --skip-gate                         Skip scripts/release_gate.sh.
   --allow-dirty                       Pass --allow-dirty to cargo package/publish.
+  --bootstrap                         Allow dry-run packaging to stop at unpublished workspace deps.
   -h, --help                          Show this help.
 
 Environment:
   CARGO_REGISTRY_TOKEN must be set by cargo for real publishing.
 USAGE
+}
+
+wait_for_crate_available() {
+  local crate="$1"
+  local version="$2"
+  local attempt
+
+  for attempt in $(seq 1 18); do
+    if cargo search "$crate" --limit 10 2>/dev/null | grep -q "^${crate} = \"${version}\""; then
+      echo "${crate} v${version} is visible in the crates.io index"
+      return 0
+    fi
+    echo "Waiting for ${crate} v${version} to appear in crates.io index (${attempt}/18)"
+    sleep 10
+  done
+
+  echo "Timed out waiting for ${crate} v${version} to appear in crates.io index" >&2
+  return 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -43,6 +63,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --allow-dirty)
       ALLOW_DIRTY=1
+      shift
+      ;;
+    --bootstrap)
+      BOOTSTRAP=1
       shift
       ;;
     -h|--help)
@@ -194,14 +218,18 @@ if [[ "$PUBLISH" -eq 1 ]]; then
   for crate in "${CRATES[@]}"; do
     echo "Publishing ${crate}"
     cargo publish -p "$crate" "${COMMON_ARGS[@]}"
+    wait_for_crate_available "$crate" "$VERSION"
   done
 else
   for crate in "${CRATES[@]}"; do
     echo "Packaging ${crate}"
     if ! cargo package -p "$crate" --offline "${COMMON_ARGS[@]}"; then
-      echo "Skipping remaining package dry-run checks because ${crate} depends on crates that are not published yet." >&2
-      echo "The release gate has already built and tested the workspace locally." >&2
-      break
+      if [[ "$BOOTSTRAP" -eq 1 ]]; then
+        echo "Skipping remaining package dry-run checks because ${crate} depends on crates that are not published yet." >&2
+        echo "The release gate has already built and tested the workspace locally." >&2
+        break
+      fi
+      exit 1
     fi
   done
   echo "Dry run complete. Re-run with --publish to push crates to crates.io."

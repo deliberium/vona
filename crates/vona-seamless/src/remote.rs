@@ -33,6 +33,8 @@ pub struct SeamlessM4tRemoteStepRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeamlessM4tRemoteStepResponse {
     #[serde(default)]
+    pub output_frames: Vec<AudioOutputFrame>,
+    #[serde(default)]
     pub output_samples: Vec<f32>,
     #[serde(default = "default_output_sample_rate_hz")]
     pub output_sample_rate_hz: u32,
@@ -120,15 +122,21 @@ where
             .await
             .map_err(|err| BackendError::Step(err.to_string()))?;
 
-        Ok(BackendStep {
-            output_audio: vec![AudioOutputFrame {
+        let output_audio = if payload.output_frames.is_empty() {
+            vec![AudioOutputFrame {
                 sequence: input.sequence,
                 sample_rate_hz: payload.output_sample_rate_hz,
                 // Use the session config channel count instead of hardcoding 1
                 channels: session.config.channels,
                 samples: payload.output_samples,
                 is_filler: false,
-            }],
+            }]
+        } else {
+            payload.output_frames
+        };
+
+        Ok(BackendStep {
+            output_audio,
             control_events: payload.control_events,
             transcript: payload.transcript,
             finished: payload.finished,
@@ -175,6 +183,7 @@ mod tests {
     fn echo_transport(samples: Vec<f32>) -> EchoTransport {
         EchoTransport {
             response: SeamlessM4tRemoteStepResponse {
+                output_frames: vec![],
                 output_samples: samples,
                 output_sample_rate_hz: 16_000,
                 transcript: Some("test transcript".into()),
@@ -279,6 +288,49 @@ mod tests {
         };
         let result = backend.step(&mut session, frame).await.unwrap();
         assert_eq!(result.output_audio[0].sequence, 42);
+    }
+
+    #[tokio::test]
+    async fn remote_backend_preserves_multiple_output_frames() {
+        let frames = vec![
+            AudioOutputFrame {
+                sequence: 10,
+                sample_rate_hz: 24_000,
+                channels: 1,
+                samples: vec![0.1],
+                is_filler: false,
+            },
+            AudioOutputFrame {
+                sequence: 11,
+                sample_rate_hz: 24_000,
+                channels: 1,
+                samples: vec![0.2],
+                is_filler: true,
+            },
+        ];
+        let backend = SeamlessM4tRemoteBackend::new(
+            EchoTransport {
+                response: SeamlessM4tRemoteStepResponse {
+                    output_frames: frames.clone(),
+                    output_samples: vec![],
+                    output_sample_rate_hz: 16_000,
+                    transcript: None,
+                    control_events: vec![],
+                    finished: false,
+                    debug_payload: None,
+                },
+            },
+            SeamlessM4tRemoteConfig::default(),
+        );
+        let mut session = backend
+            .start_session(vona_core::SessionConfig::default())
+            .await
+            .unwrap();
+        let result = backend
+            .step(&mut session, input_frame(vec![0.0]))
+            .await
+            .unwrap();
+        assert_eq!(result.output_audio, frames);
     }
 
     // ── inject_event ─────────────────────────────────────────────────────────

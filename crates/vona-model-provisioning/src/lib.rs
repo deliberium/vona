@@ -1,6 +1,9 @@
+use futures_util::StreamExt;
+use ring::digest::{Context, SHA256};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use thiserror::Error;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub const DEFAULT_CACHE_ENV: &str = "VONA_MODEL_CACHE_DIR";
 
@@ -16,6 +19,9 @@ pub enum LocalModelProvider {
     },
     LocalFile,
     Custom {
+        name: String,
+    },
+    ProviderManaged {
         name: String,
     },
 }
@@ -134,6 +140,12 @@ pub enum ProvisioningError {
         expected: u64,
         actual: u64,
     },
+    #[error("artifact checksum mismatch for {name}: expected sha256 {expected}, got {actual}")]
+    ChecksumMismatch {
+        name: String,
+        expected: String,
+        actual: String,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -162,57 +174,96 @@ impl HttpModelProvisioner {
         validate_manifest(manifest)?;
         cache.ensure_dirs(manifest)?;
         let plan = cache.inspect(manifest);
-        for planned in &plan.missing {
-            let url = planned.artifact.source_url.as_ref().ok_or_else(|| {
-                ProvisioningError::MissingSourceUrl(planned.artifact.name.clone())
-            })?;
-            let bytes = self
-                .client
-                .get(url)
-                .send()
-                .await
-                .map_err(|err| ProvisioningError::Download {
-                    url: url.clone(),
-                    message: err.to_string(),
-                })?
-                .error_for_status()
-                .map_err(|err| ProvisioningError::Download {
-                    url: url.clone(),
-                    message: err.to_string(),
-                })?
-                .bytes()
-                .await
-                .map_err(|err| ProvisioningError::Download {
-                    url: url.clone(),
-                    message: err.to_string(),
-                })?;
-
-            if let Some(expected) = planned.artifact.expected_size_bytes {
-                let actual = bytes.len() as u64;
-                if actual != expected {
-                    return Err(ProvisioningError::SizeMismatch {
-                        name: planned.artifact.name.clone(),
-                        expected,
-                        actual,
-                    });
+        let mut to_download = plan.missing;
+        for planned in plan.present {
+            if let Err(err) = verify_artifact_file(&planned).await {
+                let _ = tokio::fs::remove_file(&planned.path).await;
+                if matches!(
+                    err,
+                    ProvisioningError::SizeMismatch { .. }
+                        | ProvisioningError::ChecksumMismatch { .. }
+                ) {
+                    to_download.push(planned);
+                } else {
+                    return Err(err);
                 }
             }
+        }
 
-            if let Some(parent) = planned.path.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|err| ProvisioningError::Io(err.to_string()))?;
-            }
-            tokio::fs::write(&planned.path, bytes)
+        for planned in &to_download {
+            self.download_artifact(planned).await?;
+        }
+        Ok(cache.inspect(manifest))
+    }
+
+    async fn download_artifact(&self, planned: &PlannedArtifact) -> Result<(), ProvisioningError> {
+        let url =
+            planned.artifact.source_url.as_ref().ok_or_else(|| {
+                ProvisioningError::MissingSourceUrl(planned.artifact.name.clone())
+            })?;
+        if let Some(parent) = planned.path.parent() {
+            tokio::fs::create_dir_all(parent)
                 .await
                 .map_err(|err| ProvisioningError::Io(err.to_string()))?;
         }
-        Ok(cache.inspect(manifest))
+
+        let temp_path = planned
+            .path
+            .with_extension(format!("{}.tmp", std::process::id()));
+        let mut file = tokio::fs::File::create(&temp_path)
+            .await
+            .map_err(|err| ProvisioningError::Io(err.to_string()))?;
+        let mut response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|err| ProvisioningError::Download {
+                url: url.clone(),
+                message: err.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|err| ProvisioningError::Download {
+                url: url.clone(),
+                message: err.to_string(),
+            })?
+            .bytes_stream();
+
+        let mut hasher = Context::new(&SHA256);
+        let mut size = 0_u64;
+        while let Some(chunk) = response.next().await {
+            let chunk = chunk.map_err(|err| ProvisioningError::Download {
+                url: url.clone(),
+                message: err.to_string(),
+            })?;
+            size += chunk.len() as u64;
+            hasher.update(&chunk);
+            file.write_all(&chunk)
+                .await
+                .map_err(|err| ProvisioningError::Io(err.to_string()))?;
+        }
+        file.flush()
+            .await
+            .map_err(|err| ProvisioningError::Io(err.to_string()))?;
+        drop(file);
+
+        verify_size(&planned.artifact, size)?;
+        verify_sha256(&planned.artifact, encode_hex(hasher.finish().as_ref()))?;
+
+        tokio::fs::rename(&temp_path, &planned.path)
+            .await
+            .map_err(|err| ProvisioningError::Io(err.to_string()))?;
+        Ok(())
     }
 }
 
 pub fn validate_manifest(manifest: &ModelManifest) -> Result<(), ProvisioningError> {
-    if manifest.artifacts.is_empty() {
+    if manifest.artifacts.is_empty()
+        && !matches!(
+            manifest.provider,
+            LocalModelProvider::Ollama { .. } | LocalModelProvider::ProviderManaged { .. }
+        )
+    {
         return Err(ProvisioningError::EmptyManifest(manifest.id.clone()));
     }
     for artifact in &manifest.artifacts {
@@ -249,12 +300,74 @@ pub fn moshi_server_manifest(model: impl Into<String>) -> ModelManifest {
     let model = model.into();
     ModelManifest {
         id: format!("moshi/{model}"),
-        provider: LocalModelProvider::HuggingFace {
-            repo: model,
-            revision: None,
+        provider: LocalModelProvider::ProviderManaged {
+            name: format!("moshi/{model}"),
         },
         artifacts: Vec::new(),
     }
+}
+
+async fn verify_artifact_file(planned: &PlannedArtifact) -> Result<(), ProvisioningError> {
+    let metadata = tokio::fs::metadata(&planned.path)
+        .await
+        .map_err(|err| ProvisioningError::Io(err.to_string()))?;
+    verify_size(&planned.artifact, metadata.len())?;
+
+    if planned.artifact.sha256.is_some() {
+        let mut file = tokio::fs::File::open(&planned.path)
+            .await
+            .map_err(|err| ProvisioningError::Io(err.to_string()))?;
+        let mut hasher = Context::new(&SHA256);
+        let mut buffer = vec![0_u8; 64 * 1024];
+        loop {
+            let read = file
+                .read(&mut buffer)
+                .await
+                .map_err(|err| ProvisioningError::Io(err.to_string()))?;
+            if read == 0 {
+                break;
+            }
+            hasher.update(&buffer[..read]);
+        }
+        verify_sha256(&planned.artifact, encode_hex(hasher.finish().as_ref()))?;
+    }
+    Ok(())
+}
+
+fn verify_size(artifact: &ModelArtifact, actual: u64) -> Result<(), ProvisioningError> {
+    if let Some(expected) = artifact.expected_size_bytes
+        && actual != expected
+    {
+        return Err(ProvisioningError::SizeMismatch {
+            name: artifact.name.clone(),
+            expected,
+            actual,
+        });
+    }
+    Ok(())
+}
+
+fn verify_sha256(artifact: &ModelArtifact, actual: String) -> Result<(), ProvisioningError> {
+    if let Some(expected) = &artifact.sha256
+        && !expected.eq_ignore_ascii_case(&actual)
+    {
+        return Err(ProvisioningError::ChecksumMismatch {
+            name: artifact.name.clone(),
+            expected: expected.clone(),
+            actual,
+        });
+    }
+    Ok(())
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut encoded = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        encoded.push(HEX[(byte >> 4) as usize] as char);
+        encoded.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    encoded
 }
 
 fn sanitize_model_id(id: &str) -> String {
@@ -264,11 +377,6 @@ fn sanitize_model_id(id: &str) -> String {
             ch => ch,
         })
         .collect()
-}
-
-#[allow(dead_code)]
-fn _assert_path_is_relative(path: &Path) -> bool {
-    !path.is_absolute()
 }
 
 #[cfg(test)]
@@ -322,5 +430,31 @@ mod tests {
         assert!(plan.is_ready());
         assert_eq!(plan.present.len(), 1);
         let _ = std::fs::remove_dir_all(cache.root);
+    }
+
+    #[test]
+    fn moshi_manifest_is_provider_managed_and_valid_without_artifacts() {
+        let manifest = moshi_server_manifest("kyutai/moshi");
+        assert!(matches!(
+            manifest.provider,
+            LocalModelProvider::ProviderManaged { .. }
+        ));
+        assert!(validate_manifest(&manifest).is_ok());
+    }
+
+    #[test]
+    fn sha256_verification_detects_mismatch() {
+        let artifact = ModelArtifact {
+            name: "model".to_string(),
+            relative_path: PathBuf::from("model.bin"),
+            source_url: None,
+            expected_size_bytes: Some(4),
+            sha256: Some("0000".to_string()),
+        };
+        assert!(matches!(
+            verify_sha256(&artifact, "abcd".to_string()),
+            Err(ProvisioningError::ChecksumMismatch { .. })
+        ));
+        assert!(verify_size(&artifact, 4).is_ok());
     }
 }

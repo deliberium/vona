@@ -102,12 +102,14 @@ pub enum ElevenLabsMappingError {
 }
 
 pub fn start_message(config: &ElevenLabsTtsConfig) -> ElevenLabsWebSocketMessage {
+    let mut payload = serde_json::Map::new();
+    payload.insert("text".to_string(), json!(" "));
+    payload.insert("voice_settings".to_string(), config.voice_settings());
+    if let Some(api_key) = &config.api_key {
+        payload.insert("xi_api_key".to_string(), json!(api_key));
+    }
     ElevenLabsWebSocketMessage {
-        payload: json!({
-            "text": " ",
-            "xi_api_key": config.api_key.clone().unwrap_or_default(),
-            "voice_settings": config.voice_settings(),
-        }),
+        payload: Value::Object(payload),
     }
 }
 

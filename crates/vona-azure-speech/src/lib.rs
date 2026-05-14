@@ -104,10 +104,9 @@ impl AzureVoiceLiveConfig {
             "cognitiveservices.azure.com"
         };
         format!(
-            "wss://{}.{}//voice-live/realtime?api-version={}",
+            "wss://{}.{}/voice-live/realtime?api-version={}",
             self.resource_name, host, self.api_version
         )
-        .replace(".com//", ".com/")
     }
 }
 

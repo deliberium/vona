@@ -15,6 +15,7 @@ For release packaging and crates.io publishing:
 ```bash
 scripts/release_crates.sh --release patch
 scripts/release_crates.sh --release patch --publish
+scripts/release_crates.sh --release current --bootstrap
 ```
 
 The script is deterministic by design:
@@ -72,7 +73,7 @@ Publish workspace crates in dependency order:
 
 Until `vona-core` is live on crates.io, provider crates that depend on it cannot be fully verified by `cargo package`.
 
-The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manual `current`, `patch`, `minor`, or `major` input. It updates Cargo versions, refreshes `CHANGELOG.md`, runs the release gate, publishes in order when requested, commits release metadata, tags the release, and creates the GitHub release.
+The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manual `current`, `patch`, `minor`, or `major` input. It updates Cargo versions, refreshes `CHANGELOG.md`, runs the release gate, creates a local release commit and tag, publishes in order when requested, then pushes the release commit/tag and creates the GitHub release. Publish mode waits for each crate to become visible in the crates.io index before publishing dependents.
 
 ## Notes
 

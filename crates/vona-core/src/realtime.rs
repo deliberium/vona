@@ -94,6 +94,7 @@ pub enum RealtimeVoiceOutput {
     ToolCall(SkillCall),
     Interruption { reason: Option<String> },
     LatencyMark(RealtimeLatencyMark),
+    ResponseCompleted { reason: Option<String> },
     Closed { reason: Option<String> },
 }
 
