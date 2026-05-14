@@ -82,7 +82,7 @@ Publish workspace crates in dependency order:
 
 Until `vona-core` is live on crates.io, provider crates that depend on it cannot be fully verified by `cargo package`.
 
-The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manual `current`, `patch`, `minor`, or `major` input. It updates Cargo versions, refreshes `CHANGELOG.md`, runs the release gate, creates a local release commit and tag, publishes in order when requested, then pushes the release commit/tag and creates the GitHub release. Publish mode skips the offline package dry-run during preparation because `cargo publish` performs packaging against the live registry. Publish mode can skip already-published versions when resuming a partial publish, and retries dependent publishes while the crates.io index catches up.
+The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manual `current`, `patch`, `minor`, or `major` input. It updates Cargo versions, refreshes `CHANGELOG.md`, runs the release gate, creates a local release commit and tag, publishes in order when requested, then pushes the release commit/tag and creates the GitHub release. Publish mode skips the offline package dry-run during preparation because `cargo publish` performs packaging against the live registry. Publish mode can skip already-published versions when resuming a partial publish, retries dependent publishes while the crates.io index catches up, and waits/retries when crates.io returns a new-crate rate-limit response.
 
 ## Notes
 

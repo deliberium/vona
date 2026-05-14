@@ -62,6 +62,7 @@ publish_crate() {
   local crate="$1"
   local attempt
   local log_file
+  local retry_after
 
   if [[ "$SKIP_PUBLISHED" -eq 1 ]] && crate_version_exists "$crate" "$VERSION"; then
     echo "${crate} v${VERSION} is already published; skipping."
@@ -69,8 +70,8 @@ publish_crate() {
   fi
 
   log_file="$(mktemp)"
-  for attempt in $(seq 1 18); do
-    echo "Publishing ${crate} (attempt ${attempt}/18)"
+  for attempt in $(seq 1 30); do
+    echo "Publishing ${crate} (attempt ${attempt}/30)"
     if cargo publish -p "$crate" "${COMMON_ARGS[@]}" 2>&1 | tee "$log_file"; then
       echo "${crate} v${VERSION} published."
       rm -f "$log_file"
@@ -89,13 +90,40 @@ publish_crate() {
       continue
     fi
 
+    if grep -Eiq "429 Too Many Requests|published too many new crates|rate-limits" "$log_file"; then
+      retry_after="$(extract_rate_limit_retry_after "$log_file")"
+      echo "crates.io rate limit hit while publishing ${crate}; retrying after ${retry_after} seconds." >&2
+      sleep "$retry_after"
+      continue
+    fi
+
     rm -f "$log_file"
     return 1
   done
 
-  echo "Timed out publishing ${crate} after dependency-index retries." >&2
+  echo "Timed out publishing ${crate} after registry retries." >&2
   rm -f "$log_file"
   return 1
+}
+
+extract_rate_limit_retry_after() {
+  local log_file="$1"
+  local retry_at
+  local retry_epoch
+  local now_epoch
+
+  retry_at="$(grep -Eo 'after [A-Za-z]{3}, [0-9]{1,2} [A-Za-z]{3} [0-9]{4} [0-9]{2}:[0-9]{2}:[0-9]{2} GMT' "$log_file" | head -1 | sed 's/^after //')"
+  if [[ -n "$retry_at" ]]; then
+    if retry_epoch="$(date -u -d "$retry_at" '+%s' 2>/dev/null)"; then
+      now_epoch="$(date -u '+%s')"
+      if [[ "$retry_epoch" -gt "$now_epoch" ]]; then
+        echo $((retry_epoch - now_epoch + 20))
+        return 0
+      fi
+    fi
+  fi
+
+  echo 300
 }
 
 while [[ $# -gt 0 ]]; do
