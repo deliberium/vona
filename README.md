@@ -1,14 +1,25 @@
+<p align="center">
+  <img src="resources/VonaLogo.png" alt="Vona logo" width="220">
+</p>
+
+<p align="center">
+  <a href="https://github.com/deliberium/vona/actions/workflows/ci.yml"><img src="https://github.com/deliberium/vona/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://crates.io/crates/vona"><img src="https://img.shields.io/crates/l/vona.svg" alt="License"></a>
+</p>
+
 # Vona
 
-Vona is a Rust workspace for building real-time speech-to-speech runtimes.
+Vona is the Rust runtime layer for the next wave of voice-native products: fast, composable, provider-neutral speech-to-speech infrastructure you can actually ship.
 
-It provides the contracts, session loop, transport plumbing, backend adapters, and deterministic test harness needed to embed low-latency voice systems without tying application code to one model provider or serving topology.
+It gives teams the durable core that most voice prototypes end up rebuilding by hand: realtime session orchestration, audio transport boundaries, backend adapters, tool/context hooks, fallback policy, and deterministic harnesses for the moments that matter most, like interruption, first audio latency, tool calls, and event ordering.
 
-Vona is intentionally not a complete voice assistant. Host applications remain responsible for admission control, wake policy, playback policy, authentication, product UX, and deployment. Vona owns the reusable runtime boundary between audio transports, speech-to-speech backends, skill/tool context, and fallback policy.
+Bring your own product surface, model strategy, deployment topology, and user experience. Vona owns the hard runtime boundary between microphones, transports, speech-to-speech models, local/cloud providers, skills, and policy so your application can move across backends without rewriting its voice stack.
 
 ## Why Vona
 
-Most speech-to-speech projects begin as one of three things: a model demo, a provider SDK wrapper, or application-specific voice-agent glue. Vona is aimed at a different layer.
+Most speech-to-speech projects start as a model demo, a provider SDK wrapper, or a tangle of application-specific voice-agent glue. That works until you need to swap models, run locally, move to a hosted realtime API, test interruptions, or prove latency before the launch window closes.
+
+Vona is built for that inflection point. It is not another assistant template; it is the runtime substrate underneath one. The goal is simple: make voice systems feel as modular, testable, and backend-portable as the rest of a modern AI stack.
 
 Use Vona when you want:
 
