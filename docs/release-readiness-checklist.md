@@ -16,6 +16,7 @@ For release packaging and crates.io publishing:
 scripts/release_crates.sh --release patch
 scripts/release_crates.sh --release patch --publish
 scripts/release_crates.sh --release current --bootstrap
+scripts/release_crates.sh --release current --bootstrap --skip-package-dry-run
 ```
 
 The script is deterministic by design:
@@ -81,7 +82,7 @@ Publish workspace crates in dependency order:
 
 Until `vona-core` is live on crates.io, provider crates that depend on it cannot be fully verified by `cargo package`.
 
-The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manual `current`, `patch`, `minor`, or `major` input. It updates Cargo versions, refreshes `CHANGELOG.md`, runs the release gate, creates a local release commit and tag, publishes in order when requested, then pushes the release commit/tag and creates the GitHub release. Publish mode waits for each crate version to become visible through crates.io before publishing dependents, and can skip already-published versions when resuming a partial publish.
+The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manual `current`, `patch`, `minor`, or `major` input. It updates Cargo versions, refreshes `CHANGELOG.md`, runs the release gate, creates a local release commit and tag, publishes in order when requested, then pushes the release commit/tag and creates the GitHub release. Publish mode skips the offline package dry-run during preparation because `cargo publish` performs packaging against the live registry. Publish mode waits for each crate version to become visible through crates.io before publishing dependents, and can skip already-published versions when resuming a partial publish.
 
 ## Notes
 

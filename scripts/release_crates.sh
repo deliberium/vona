@@ -10,6 +10,7 @@ SKIP_GATE=0
 ALLOW_DIRTY=0
 BOOTSTRAP=0
 SKIP_PUBLISHED=0
+SKIP_PACKAGE_DRY_RUN=0
 
 usage() {
   cat <<'USAGE'
@@ -24,6 +25,7 @@ Options:
   --allow-dirty                       Pass --allow-dirty to cargo package/publish.
   --bootstrap                         Allow dry-run packaging to stop at unpublished workspace deps.
   --skip-published                    During publish, skip crate versions already present on crates.io.
+  --skip-package-dry-run              After metadata/gate, skip non-publish cargo package dry-run.
   -h, --help                          Show this help.
 
 Environment:
@@ -122,6 +124,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --skip-published)
       SKIP_PUBLISHED=1
+      shift
+      ;;
+    --skip-package-dry-run)
+      SKIP_PACKAGE_DRY_RUN=1
       shift
       ;;
     -h|--help)
@@ -273,6 +279,8 @@ if [[ "$PUBLISH" -eq 1 ]]; then
   for crate in "${CRATES[@]}"; do
     publish_crate "$crate"
   done
+elif [[ "$SKIP_PACKAGE_DRY_RUN" -eq 1 ]]; then
+  echo "Skipping package dry-run. The release gate has already built and tested the workspace locally."
 else
   for crate in "${CRATES[@]}"; do
     echo "Packaging ${crate}"

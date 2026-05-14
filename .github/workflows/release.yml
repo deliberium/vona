@@ -55,7 +55,7 @@ jobs:
           restore-keys: cargo-registry-
 
       - name: Prepare release metadata and gate
-        run: scripts/release_crates.sh --release "${{ inputs.release_type }}" --bootstrap
+        run: scripts/release_crates.sh --release "${{ inputs.release_type }}" --bootstrap ${{ inputs.publish && '--skip-package-dry-run' || '' }}
 
       - name: Read release version
         id: version
