@@ -28,7 +28,7 @@ Maintainers are responsible for clarifying and enforcing these standards and wil
 
 ## Enforcement
 
-Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by emailing **conduct@deliberium.ai**. All complaints will be reviewed and investigated promptly and fairly. Maintainers are obligated to respect the privacy and security of the reporter.
+Instances of abusive, harassing, or otherwise unacceptable behavior may be reported by emailing **kamba@deliberium.ai**. All complaints will be reviewed and investigated promptly and fairly. Maintainers are obligated to respect the privacy and security of the reporter.
 
 ## Attribution
 

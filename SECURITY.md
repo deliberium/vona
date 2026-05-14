@@ -10,7 +10,7 @@
 
 **Do not open a public GitHub Issue for security vulnerabilities.**
 
-Please report security issues by emailing **security@deliberium.ai** with:
+Please report security issues by emailing **kamba@deliberium.ai** with:
 
 - A description of the vulnerability and its potential impact
 - Steps to reproduce or a proof-of-concept (if applicable)
