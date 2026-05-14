@@ -57,9 +57,25 @@ impl BenchConfig {
 }
 
 fn mock_response(request: &SeamlessM4tRemoteStepRequest) -> SeamlessM4tRemoteStepResponse {
+    let output_samples = vec![0.0; request.input_samples.len().clamp(32, 160)];
     SeamlessM4tRemoteStepResponse {
-        output_frames: vec![],
-        output_samples: vec![0.0; request.input_samples.len().clamp(32, 160)],
+        output_frames: vec![
+            vona_core::AudioOutputFrame {
+                sequence: 0,
+                sample_rate_hz: 16_000,
+                channels: 1,
+                samples: output_samples.clone(),
+                is_filler: false,
+            },
+            vona_core::AudioOutputFrame {
+                sequence: 1,
+                sample_rate_hz: 16_000,
+                channels: 1,
+                samples: output_samples.iter().copied().take(32).collect(),
+                is_filler: true,
+            },
+        ],
+        output_samples,
         output_sample_rate_hz: 16_000,
         transcript: Some("benchmark transcript".to_string()),
         control_events: vec![],

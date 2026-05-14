@@ -51,16 +51,24 @@ Release readiness is **PASS** only when all items below succeed in a single run.
    - `http_round_trip_avg_ms=`
    - `ipc_round_trip_avg_ms=`
    - `live_latency_ratio_http_over_ipc=`
+7. Criterion benchmark collection exits with code `0` and emits the expected row counts:
+   - at least 8 `vona-seamless` resample rows
+   - at least 9 `vona-test-harness` session/transport SLO rows
+   - at least 8 `vona-test-harness` realtime/provider/provisioning SLO rows
 
 Any failure above is a **FAIL** and blocks release.
 
 ## Evidence Artifacts
 
-The gate produces one benchmark artifact:
+The gate produces benchmark artifacts:
 
 - `target/release-gate-transport-bench.log`
+- `target/release-gate-resample-bench.log`
+- `target/release-gate-slo-bench.log`
+- `target/release-gate-realtime-bench.log`
+- `docs/benchmark-results.md`
 
-Keep this file in CI artifacts for each release candidate.
+Keep these files in CI artifacts for each release candidate.
 
 ## Crates.io Publish Order
 
@@ -73,10 +81,10 @@ Publish workspace crates in dependency order:
 
 Until `vona-core` is live on crates.io, provider crates that depend on it cannot be fully verified by `cargo package`.
 
-The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manual `current`, `patch`, `minor`, or `major` input. It updates Cargo versions, refreshes `CHANGELOG.md`, runs the release gate, creates a local release commit and tag, publishes in order when requested, then pushes the release commit/tag and creates the GitHub release. Publish mode waits for each crate to become visible in the crates.io index before publishing dependents.
+The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manual `current`, `patch`, `minor`, or `major` input. It updates Cargo versions, refreshes `CHANGELOG.md`, runs the release gate, creates a local release commit and tag, publishes in order when requested, then pushes the release commit/tag and creates the GitHub release. Publish mode waits for each crate version to become visible through crates.io before publishing dependents, and can skip already-published versions when resuming a partial publish.
 
 ## Notes
 
 - If `libopus` is not installed, the gate fails early with a clear setup message.
-- This gate validates build/test/benchmark determinism and baseline transport performance smoke behavior.
+- This gate validates build/test/benchmark determinism, baseline transport performance smoke behavior, realtime event flow overhead, hosted-provider protocol mapping overhead, and local model provisioning validation overhead.
 - Production latency SLO validation should be layered on top of this gate in environment-specific performance jobs.

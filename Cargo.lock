@@ -2593,6 +2593,9 @@ dependencies = [
  "serde_json",
  "tokio",
  "vona-core",
+ "vona-gemini-live",
+ "vona-model-provisioning",
+ "vona-openai-realtime",
 ]
 
 [[package]]

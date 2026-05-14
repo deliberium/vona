@@ -109,6 +109,7 @@ log "Step 6/6: writing docs/benchmark-results.md"
 
 RESAMPLE_LOG="${ROOT_DIR}/target/release-gate-resample-bench.log"
 SLO_LOG="${ROOT_DIR}/target/release-gate-slo-bench.log"
+REALTIME_LOG="${ROOT_DIR}/target/release-gate-realtime-bench.log"
 RESULTS_MD="${ROOT_DIR}/docs/benchmark-results.md"
 RUN_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
 
@@ -116,11 +117,15 @@ RUN_DATE="$(date -u '+%Y-%m-%d %H:%M UTC')"
 # --output-format bencher emits "test <name> ... bench: <median> ns/iter (+/- <mad>)" lines.
 cargo bench -p vona-seamless --bench resample -- \
   --warm-up-time 1 --measurement-time 3 --output-format bencher \
-  2>/dev/null > "$RESAMPLE_LOG" || true
+  2>/dev/null > "$RESAMPLE_LOG"
 
 cargo bench -p vona-test-harness --bench slo -- \
   --warm-up-time 1 --measurement-time 3 --output-format bencher \
-  2>/dev/null > "$SLO_LOG" || true
+  2>/dev/null > "$SLO_LOG"
+
+cargo bench -p vona-test-harness --bench realtime -- \
+  --warm-up-time 1 --measurement-time 3 --output-format bencher \
+  2>/dev/null > "$REALTIME_LOG"
 
 # ── Parse one bench line into a table row ───────────────────────────────────
 # Input: "test resample_mono/8k_to_16k ... bench:      15,993 ns/iter (+/-  123)"
@@ -136,6 +141,23 @@ parse_bench_lines() {
     printf "| \`%s\` | %s %s | ± %s |\n" "$name" "$median" "$unit" "$mad"
   done
 }
+
+require_bench_rows() {
+  local logfile="$1"
+  local expected="$2"
+  local label="$3"
+  local actual
+
+  actual="$(grep -c "^test " "$logfile" 2>/dev/null || true)"
+  if [[ "$actual" -lt "$expected" ]]; then
+    log "Benchmark output for ${label} has ${actual} rows; expected at least ${expected}"
+    exit 1
+  fi
+}
+
+require_bench_rows "$RESAMPLE_LOG" 8 "vona-seamless resample"
+require_bench_rows "$SLO_LOG" 9 "vona-test-harness SLO"
+require_bench_rows "$REALTIME_LOG" 8 "vona-test-harness realtime/provider/provisioning"
 
 # ── Extract transport gate metrics ──────────────────────────────────────────
 extract_transport_metric() {
@@ -176,6 +198,13 @@ RATIO="$(extract_transport_metric live_latency_ratio_http_over_ipc)"
   parse_bench_lines "$SLO_LOG"
   printf "\n"
 
+  printf "## Realtime / Provider / Provisioning SLO (vona-test-harness)\n\n"
+  printf "Criterion micro-benchmarks for the provider-neutral realtime contract, hosted-provider protocol mapping, and local model provisioning validation. These are deterministic and do not call external services.\n\n"
+  printf "| Benchmark | Median | MAD |\n"
+  printf "|-----------|--------|-----|\n"
+  parse_bench_lines "$REALTIME_LOG"
+  printf "\n"
+
   printf "## SLO Targets\n\n"
   printf "| Benchmark group | Target |\n"
   printf "|-----------------|--------|\n"
@@ -183,6 +212,9 @@ RATIO="$(extract_transport_metric live_latency_ratio_http_over_ipc)"
   printf "| \`session_lifecycle\` | P99 < 1 ms |\n"
   printf "| \`transport_loopback\` (all frame sizes) | P99 < 100 µs |\n"
   printf "| \`inject_and_drain_10_events\` | P99 < 200 µs |\n"
+  printf "| \`scripted_realtime_event_flow\` | P99 < 500 µs |\n"
+  printf "| \`provider_mapping\` audio/tool/config events | P99 < 500 µs |\n"
+  printf "| \`model_provisioning\` manifest/checksum validation | P99 < 5 ms |\n"
   printf "| \`resample_mono\` 8k→16k 1 s | > 50× real-time |\n"
   printf "| \`resample_mono\` 48k→16k 1 s | > 30× real-time |\n"
   printf "| \`resample_mono\` identity 1 s | > 500× real-time |\n"

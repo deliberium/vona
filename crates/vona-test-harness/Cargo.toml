@@ -21,7 +21,14 @@ vona-core.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+vona-gemini-live.workspace = true
+vona-model-provisioning.workspace = true
+vona-openai-realtime.workspace = true
 
 [[bench]]
 name = "slo"
+harness = false
+
+[[bench]]
+name = "realtime"
 harness = false
