@@ -1,4 +1,4 @@
-# Contributing to vona-rs
+# Contributing to vona
 
 Thank you for your interest in contributing!
 

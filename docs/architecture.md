@@ -1,4 +1,4 @@
-# Vona-rs Architecture
+# Vona Architecture
 
 The workspace is split into two layers:
 

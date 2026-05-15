@@ -8,7 +8,7 @@ cargo run -p vona-test-harness --example mock_session --locked
 
 It runs a complete scripted Vona session with audio output, a mock skill call, context injection, interruption handling, and printed session metrics.
 
-This example directory pairs with committed waveform fixtures under `vona-rs/tests/fixtures/`.
+This example directory pairs with committed waveform fixtures under `vona/tests/fixtures/`.
 
 Use the deterministic loopback harness in `vona-test-harness` to validate fixture replay and in-process latency:
 

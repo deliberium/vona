@@ -1,6 +1,6 @@
-# Vona-rs Release Readiness Checklist
+# Vona Release Readiness Checklist
 
-This checklist is the single-page release gate for Vona-rs.
+This checklist is the single-page release gate for Vona.
 
 ## How To Run
 
