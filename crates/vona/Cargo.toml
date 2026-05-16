@@ -27,6 +27,7 @@ all = [
     "model-provisioning",
     "moshi",
     "openai-realtime",
+    "qwen",
     "seamless",
     "test-harness",
     "transport-local",
@@ -37,12 +38,14 @@ cloud = [
     "elevenlabs",
     "gemini-live",
     "openai-realtime",
+    "qwen",
 ]
 seamless = ["dep:vona-seamless"]
 moshi = ["dep:vona-moshi"]
 transport-local = ["seamless", "dep:vona-transport-local"]
 test-harness = ["dep:vona-test-harness"]
 openai-realtime = ["dep:vona-openai-realtime"]
+qwen = ["dep:vona-qwen"]
 gemini-live = ["dep:vona-gemini-live"]
 elevenlabs = ["dep:vona-elevenlabs"]
 deepgram = ["dep:vona-deepgram"]
@@ -58,6 +61,7 @@ vona-gemini-live = { workspace = true, optional = true }
 vona-model-provisioning = { workspace = true, optional = true }
 vona-moshi = { workspace = true, optional = true }
 vona-openai-realtime = { workspace = true, optional = true }
+vona-qwen = { workspace = true, optional = true }
 vona-seamless = { workspace = true, optional = true }
 vona-test-harness = { workspace = true, optional = true }
 vona-transport-local = { workspace = true, optional = true }

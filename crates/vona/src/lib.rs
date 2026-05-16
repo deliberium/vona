@@ -88,6 +88,17 @@ pub use vona_openai_realtime::{
     OpenAiClientEvent, OpenAiRealtimeConfig, OpenAiRealtimeMappingError,
 };
 
+#[cfg(feature = "qwen")]
+pub use vona_qwen as qwen;
+#[cfg(feature = "qwen")]
+pub use vona_qwen::{
+    QwenAsrRealtimeConfig, QwenClientEvent, QwenRealtimeMappingError, QwenRealtimeServerOutput,
+    QwenTtsRealtimeConfig, qwen_audio_append_event, qwen_audio_commit_event,
+    qwen_input_text_append_event, qwen_input_text_commit_event, qwen_response_create_event,
+    qwen_server_event_to_output, qwen_session_finish_event, qwen_session_update_event,
+    qwen_session_update_event_for_asr, qwen_session_update_event_for_tts,
+};
+
 #[cfg(feature = "seamless")]
 pub use vona_seamless as seamless;
 #[cfg(feature = "seamless")]

@@ -196,6 +196,7 @@ publish_order = [
     "vona-azure-speech",
     "vona-elevenlabs",
     "vona-deepgram",
+    "vona-qwen",
     "vona-seamless",
     "vona-moshi",
     "vona-test-harness",
@@ -281,6 +282,20 @@ if changelog_path.exists():
     changelog_path.write_text(changelog)
 
 (root / "target").mkdir(exist_ok=True)
+release_notes_path = root / "target" / "vona-release-notes.md"
+if changelog_path.exists():
+    changelog = changelog_path.read_text()
+    match = re.search(
+        rf"^## \[{re.escape(version)}\] - [^\n]*\n(?P<body>.*?)(?=^## \[|\n\[[^\]]+\]:|\Z)",
+        changelog,
+        re.M | re.S,
+    )
+    if match:
+        release_notes_path.write_text(match.group(0).strip() + "\n")
+    else:
+        release_notes_path.write_text(f"## [{version}]\n\nRelease v{version}.\n")
+else:
+    release_notes_path.write_text(f"## [{version}]\n\nRelease v{version}.\n")
 (root / "target" / "vona-release-version.txt").write_text(version + "\n")
 print(version)
 PY

@@ -9,6 +9,7 @@ members = [
     "crates/vona-model-provisioning",
     "crates/vona-moshi",
     "crates/vona-openai-realtime",
+    "crates/vona-qwen",
     "crates/vona-seamless",
     "crates/vona-test-harness",
     "crates/vona-transport-local",
@@ -60,6 +61,7 @@ vona-gemini-live = { version = "0.1.0", path = "crates/vona-gemini-live" }
 vona-model-provisioning = { version = "0.1.0", path = "crates/vona-model-provisioning" }
 vona-moshi = { version = "0.1.0", path = "crates/vona-moshi" }
 vona-openai-realtime = { version = "0.1.0", path = "crates/vona-openai-realtime" }
+vona-qwen = { version = "0.1.0", path = "crates/vona-qwen" }
 vona-seamless = { version = "0.1.0", path = "crates/vona-seamless" }
 vona-test-harness = { version = "0.1.0", path = "crates/vona-test-harness" }
 vona-transport-local = { version = "0.1.0", path = "crates/vona-transport-local" }

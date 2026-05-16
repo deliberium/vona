@@ -2450,6 +2450,7 @@ dependencies = [
  "vona-model-provisioning",
  "vona-moshi",
  "vona-openai-realtime",
+ "vona-qwen",
  "vona-seamless",
  "vona-test-harness",
  "vona-transport-local",
@@ -2542,6 +2543,17 @@ dependencies = [
 
 [[package]]
 name = "vona-openai-realtime"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "vona-core",
+]
+
+[[package]]
+name = "vona-qwen"
 version = "0.1.0"
 dependencies = [
  "base64",

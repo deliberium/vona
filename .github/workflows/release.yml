@@ -87,4 +87,4 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           name: v${{ steps.version.outputs.version }}
-          body_path: CHANGELOG.md
+          body_path: target/vona-release-notes.md
