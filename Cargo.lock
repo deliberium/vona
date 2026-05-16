@@ -2440,7 +2440,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vona"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "vona-azure-speech",
  "vona-core",
@@ -2458,7 +2458,7 @@ dependencies = [
 
 [[package]]
 name = "vona-azure-speech"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2468,7 +2468,7 @@ dependencies = [
 
 [[package]]
 name = "vona-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "jsonschema",
@@ -2480,7 +2480,7 @@ dependencies = [
 
 [[package]]
 name = "vona-deepgram"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2490,7 +2490,7 @@ dependencies = [
 
 [[package]]
 name = "vona-elevenlabs"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -2500,7 +2500,7 @@ dependencies = [
 
 [[package]]
 name = "vona-gemini-live"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "serde",
@@ -2511,7 +2511,7 @@ dependencies = [
 
 [[package]]
 name = "vona-model-provisioning"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -2524,7 +2524,7 @@ dependencies = [
 
 [[package]]
 name = "vona-moshi"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "byteorder",
@@ -2543,7 +2543,7 @@ dependencies = [
 
 [[package]]
 name = "vona-openai-realtime"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "serde",
@@ -2554,7 +2554,7 @@ dependencies = [
 
 [[package]]
 name = "vona-qwen"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "serde",
@@ -2565,7 +2565,7 @@ dependencies = [
 
 [[package]]
 name = "vona-seamless"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "criterion",
@@ -2581,7 +2581,7 @@ dependencies = [
 
 [[package]]
 name = "vona-sidecar"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -2597,7 +2597,7 @@ dependencies = [
 
 [[package]]
 name = "vona-test-harness"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "async-trait",
  "criterion",
@@ -2612,7 +2612,7 @@ dependencies = [
 
 [[package]]
 name = "vona-transport-local"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "async-trait",
