@@ -286,15 +286,14 @@ pub fn qwen_server_event_to_output(
             })))
         }
         "response.done" | "session.finished" => {
-            if event_type == "session.finished" {
-                if let Some(text) = event.get("transcript").and_then(Value::as_str) {
-                    if !text.trim().is_empty() {
-                        return Ok(Some(QwenRealtimeServerOutput::TranscriptFragment {
-                            text: text.to_string(),
-                            final_fragment: true,
-                        }));
-                    }
-                }
+            if event_type == "session.finished"
+                && let Some(text) = event.get("transcript").and_then(Value::as_str)
+                && !text.trim().is_empty()
+            {
+                return Ok(Some(QwenRealtimeServerOutput::TranscriptFragment {
+                    text: text.to_string(),
+                    final_fragment: true,
+                }));
             }
             Ok(Some(QwenRealtimeServerOutput::Completed {
                 reason: event
