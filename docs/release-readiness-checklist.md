@@ -25,6 +25,8 @@ The script is deterministic by design:
 - Normalizes `LIBOPUS_LIB_DIR` to a prefix path (`/opt/homebrew`), not a raw libdir (`/opt/homebrew/lib`)
 - Uses a fixed benchmark input (`--iterations=8 --sample-count=320`)
 - Uses `--live --mock-live` to avoid external sidecar/network dependencies
+- Checks optional facade feature combinations for hosted providers, Ollama, MLX, and model provisioning
+- Runs native MLX compile checks on macOS when `xcrun metal` is available
 
 ## Pass/Fail Criteria
 
@@ -44,15 +46,32 @@ Release readiness is **PASS** only when all items below succeed in a single run.
    - `cargo test -p vona-azure-speech --locked`
    - `cargo test -p vona-elevenlabs --locked`
    - `cargo test -p vona-deepgram --locked`
+   - `cargo test -p vona-qwen --locked`
+   - `cargo test -p vona-ollama --locked`
    - `cargo test -p vona-model-provisioning --locked`
+   - `cargo test -p vona-mlx --locked`
+   - `cargo test -p vona-mlx-speech --locked`
+   - `cargo test -p vona-mlx-whisper --locked`
+   - `cargo test -p vona-mlx-qwen3-tts --locked`
 3. `cargo check --workspace --all-targets --locked` exits with code `0`
 4. `cargo clippy --workspace --all-targets --locked -- -D warnings` exits with code `0`
-5. Transport benchmark smoke run exits with code `0`
-6. Benchmark log contains all required metrics keys:
+5. Facade feature compile matrix exits with code `0`:
+   - hosted provider cloud features
+   - local Ollama feature
+   - MLX adapter features without native Metal
+   - combined Ollama + MLX + model-provisioning features
+6. Native MLX compile matrix exits with code `0` on macOS hosts with `xcrun metal` available:
+   - `vona-mlx-speech --features native-mlx`
+   - `vona-mlx --features "native-mlx mlx-models-loader"`
+   - `vona-mlx-whisper --features native-mlx`
+   - `vona-mlx-qwen3-tts --features native-mlx`
+   - `vona --features "ollama mlx-whisper-native mlx-qwen3-tts-native model-provisioning"`
+7. Transport benchmark smoke run exits with code `0`
+8. Benchmark log contains all required metrics keys:
    - `http_round_trip_avg_ms=`
    - `ipc_round_trip_avg_ms=`
    - `live_latency_ratio_http_over_ipc=`
-7. Criterion benchmark collection exits with code `0` and emits the expected row counts:
+9. Criterion benchmark collection exits with code `0` and emits the expected row counts:
    - at least 8 `vona-seamless` resample rows
    - at least 9 `vona-test-harness` session/transport SLO rows
    - at least 8 `vona-test-harness` realtime/provider/provisioning SLO rows
@@ -77,8 +96,14 @@ Publish workspace crates in dependency order:
 
 1. `vona-core`
 2. `vona-model-provisioning`
-3. Provider and adapter crates: `vona-openai-realtime`, `vona-gemini-live`, `vona-azure-speech`, `vona-elevenlabs`, `vona-deepgram`, `vona-seamless`, `vona-moshi`, `vona-test-harness`, `vona-transport-local`
-4. `vona`
+3. `vona-ollama`
+4. `vona-mlx-speech`
+5. `vona-mlx`
+6. `vona-mlx-whisper`
+7. `vona-mlx-qwen3-tts`
+8. Provider and adapter crates: `vona-openai-realtime`, `vona-gemini-live`, `vona-azure-speech`, `vona-elevenlabs`, `vona-deepgram`, `vona-qwen`, `vona-seamless`, `vona-moshi`, `vona-test-harness`, `vona-transport-local`
+9. `vona-sidecar`
+10. `vona`
 
 Until `vona-core` is live on crates.io, provider crates that depend on it cannot be fully verified by `cargo package`.
 
@@ -87,5 +112,6 @@ The `release.yml` GitHub workflow wraps `scripts/release_crates.sh` with a manua
 ## Notes
 
 - If `libopus` is not installed, the gate fails early with a clear setup message.
+- If Metal tooling is unavailable, native MLX checks are skipped with a clear message; non-native MLX facade checks still run.
 - This gate validates build/test/benchmark determinism, baseline transport performance smoke behavior, realtime event flow overhead, hosted-provider protocol mapping overhead, and local model provisioning validation overhead.
 - Production latency SLO validation should be layered on top of this gate in environment-specific performance jobs.

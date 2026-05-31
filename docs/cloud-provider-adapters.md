@@ -1,6 +1,6 @@
 # Cloud Provider Adapters
 
-This document records the current provider split used by Vona as of May 13, 2026.
+This document records the current provider split used by Vona as of May 31, 2026.
 
 ## Research Snapshot
 
@@ -11,6 +11,7 @@ Official provider documentation currently points to three different shapes:
 - Azure now has a Voice Live realtime endpoint, while Azure Speech still exposes mature STT/TTS surfaces for cascaded backends.
 - ElevenLabs documents WebSocket text-to-speech streaming through `/v1/text-to-speech/{voice_id}/stream-input`, which is a TTS component rather than native STS.
 - Deepgram documents Flux/listen streaming STT and Aura streaming TTS. Those are speech components for cascaded voice agents.
+- Qwen realtime voice integration is tracked as a provider protocol surface, separate from local MLX Qwen3 TTS model loading.
 
 Sources:
 
@@ -35,6 +36,7 @@ Sources:
 | `vona-azure-speech` | Azure Voice Live endpoint config plus Speech STT/TTS helpers | Not run in CI |
 | `vona-elevenlabs` | ElevenLabs streaming TTS helpers | Not run in CI |
 | `vona-deepgram` | Deepgram streaming STT/TTS helpers | Not run in CI |
+| `vona-qwen` | Qwen realtime voice config and protocol helpers | Not run in CI |
 
 Provider crates deliberately keep deterministic tests at the protocol boundary. Credentialed tests should be added as ignored integration tests once each provider account, spend limit, and data-retention policy is explicit.
 
@@ -51,6 +53,7 @@ The `vona` umbrella crate exposes cloud adapters through:
 - `azure-speech`
 - `elevenlabs`
 - `deepgram`
+- `qwen`
 - `cloud`
 - `all`
 

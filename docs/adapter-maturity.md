@@ -14,7 +14,13 @@ Vona separates the core runtime contract from backend and transport adapters. Th
 | `vona-azure-speech` | Experimental protocol adapter | Azure Voice Live, Azure Speech STT/TTS | Includes Voice Live endpoint config plus Speech STT/TTS helper messages for cascaded backends. |
 | `vona-elevenlabs` | Experimental speech component | Streaming TTS in cascaded ASR+LLM+TTS adapters | ElevenLabs WebSocket TTS is not treated as native STS by Vona. |
 | `vona-deepgram` | Experimental speech component | Flux/listen STT and Aura streaming TTS in cascaded adapters | Deepgram is represented as speech components rather than a single native STS backend. |
+| `vona-qwen` | Experimental protocol adapter | Qwen realtime voice integration work | Keeps Qwen-specific realtime protocol/config mapping outside `vona-core`. |
+| `vona-ollama` | Experimental text component | Local loopback LLM generation in cascaded ASR+LLM+TTS adapters | Streams Ollama `/api/generate` chunks as Vona text frames. Requires a running Ollama server and installed model. |
 | `vona-model-provisioning` | Experimental provisioning surface | Local model cache planning and artifact manifests | Lets Vona own local model layout decisions without forcing network downloads in core tests. |
+| `vona-mlx` | Experimental local audio engine facade | Apple Silicon MLX audio experiments | Provides MLX-facing audio engine and streaming speech contracts. Native MLX features require macOS/Apple Silicon with Metal tooling. |
+| `vona-mlx-speech` | Experimental loader utility crate | Shared native Rust MLX speech model loading | Keeps model parsing and tensor-loading utilities out of adapter facades. |
+| `vona-mlx-whisper` | Experimental STT component | Native MLX Whisper/Distil-Whisper speech-to-text | Uses Vona model provisioning paths and explicit local artifacts; not yet a broad Whisper architecture matrix. |
+| `vona-mlx-qwen3-tts` | Experimental TTS component | Native MLX Qwen3 text-to-speech | Uses native Rust loading and MLX execution; operator must provision compatible Qwen3 TTS artifacts. |
 | `SeamlessM4tHttpBackend` | Experimental adapter | Process-isolated model serving through HTTP | Uses JSON and normalized `f32` PCM for bring-up simplicity. |
 | `SeamlessM4tLocalBackend` | Experimental adapter | Embedded ONNX Runtime experiments | Requires operator-supplied ONNX artifacts and local ORT loading. |
 | `vona-sidecar` HTTP API | Experimental deployment surface | Local sidecar experiments and integration tests | Supports optional bearer auth through `VONA_SIDECAR_AUTH_TOKEN`. |
@@ -38,6 +44,7 @@ New adapters should:
 - map provider failures into `BackendError` or transport-specific errors
 - include deterministic tests that do not require external services
 - document required environment variables and system dependencies
+- keep local model downloads explicit through provisioning helpers; backend constructors should not surprise-download large artifacts
 - keep authentication and product policy outside the core runtime contract
 
 Realtime voice adapters should implement `RealtimeVoiceBackend` and test event ordering, interruption, tool-call, and close semantics.

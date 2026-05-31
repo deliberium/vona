@@ -10,7 +10,7 @@ Vona supports more than one kind of speech-to-speech system. This distinction ma
 | Full-duplex spoken dialogue | `RealtimeVoiceBackend`, `vona-moshi` | Experimental adapter plus provider-neutral realtime trait | Fits Moshi-family models where listening, speaking, interruption, and tool events can overlap. |
 | Hosted realtime voice APIs | `RealtimeVoiceBackend`, `vona-openai-realtime`, `vona-gemini-live`, `vona-azure-speech` | Initial provider protocol crates | Fits APIs that stream audio directly and expose tool calls, barge-in, and response-control events. |
 | Open realtime voice models | `RealtimeVoiceBackend` | Placeholder model family, no model-specific adapter yet | Intended for newer open realtime voice models such as Chroma/Covo-Audio-style systems when a stable Rust integration boundary is chosen. |
-| Cascaded ASR + LLM + TTS | Adapter-specific, `vona-elevenlabs`, `vona-deepgram`, `vona-azure-speech` | Initial speech-component crates | Can be implemented as an adapter, but Vona should keep the cascade behind the same backend/runtime boundary. |
+| Cascaded ASR + LLM + TTS | Adapter-specific, `vona-elevenlabs`, `vona-deepgram`, `vona-azure-speech`, `vona-ollama`, `vona-mlx-whisper`, `vona-mlx-qwen3-tts` | Initial speech/text-component crates | Can be implemented as an adapter, but Vona should keep the cascade behind the same backend/runtime boundary. Local MLX + Ollama is the current Apple Silicon experiment path. |
 
 ## Two Runtime Contracts
 
@@ -45,6 +45,7 @@ Vona should remain honest about coverage:
 - Moshi is the open full-duplex dialogue anchor.
 - Hosted realtime APIs are represented by provider-specific protocol crates for OpenAI Realtime, Gemini Live, and Azure Voice Live.
 - ElevenLabs and Deepgram are represented as speech-component crates for cascaded backends rather than native STS backends.
+- Ollama, MLX Whisper, and MLX Qwen3 TTS are represented as local cascaded components rather than a single native STS backend.
 - Open realtime voice models are represented as a model-family target, but need concrete adapter crates once their Rust serving stories stabilize.
 - Local model adapters should use `vona-model-provisioning` manifests so Vona owns cache layout, artifact validation, and future download policy.
 

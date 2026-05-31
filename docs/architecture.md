@@ -4,6 +4,7 @@ The workspace is split into two layers:
 
 - Core runtime contracts in `crates/vona-core`
 - Facade re-exports and optional adapter features in `crates/vona`
+- Decoupled provider and local model adapters in their own crates
 - Deterministic verification tooling in `crates/vona-test-harness`
 
 ## Layer Boundaries
@@ -18,6 +19,8 @@ The workspace is split into two layers:
 
 `crates/vona` is the umbrella crate for crates.io consumers. It re-exports `vona-core` by default and exposes adapter crates through opt-in features.
 
+Adapter crates depend on `vona-core` rather than on each other. Hosted realtime protocols, local Ollama text generation, Seamless/ONNX, Moshi, and Apple Silicon MLX speech components stay isolated so applications can compose a backend strategy without pulling in unrelated providers or model runtimes.
+
 `crates/vona-test-harness` exists to verify backend and runtime behavior without a live model server. It provides deterministic transports, scripted backends, and mock skill execution so runtime policy can be exercised in tests.
 
 ## Runtime Contracts
@@ -28,6 +31,8 @@ Vona intentionally has two backend shapes:
 - `RealtimeVoiceBackend` for event-stream systems such as hosted realtime voice APIs, Moshi-family full-duplex dialogue, and new open realtime voice models.
 
 The realtime contract uses explicit input and output events for audio chunks, text, tool results, control messages, tool calls, interruptions, latency marks, and close events. This keeps provider-specific WebSocket, IPC, or hosted-service event formats out of host application code.
+
+Cascaded ASR+LLM+TTS systems use smaller component traits where that is a better fit. For example, `vona-mlx-whisper` owns local STT, `vona-ollama` owns local text generation, and `vona-mlx-qwen3-tts` owns local TTS; a higher-level adapter can compose them behind Vona's backend/runtime boundary.
 
 ## Sidecar Contract
 

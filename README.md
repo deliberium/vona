@@ -43,7 +43,13 @@ Do not use Vona if you need a turnkey assistant, hosted model service, wake-word
 | `vona-azure-speech` | Azure Voice Live plus Azure Speech STT/TTS helper surfaces. |
 | `vona-elevenlabs` | ElevenLabs streaming text-to-speech helper surface for cascaded voice backends. |
 | `vona-deepgram` | Deepgram Flux/listen STT and Aura streaming TTS helper surfaces. |
+| `vona-qwen` | Qwen realtime voice protocol helper surface. |
+| `vona-ollama` | Local Ollama loopback text-generation adapter for cascaded ASR+LLM+TTS systems. |
 | `vona-model-provisioning` | Local model manifest and cache planning for Vona-owned model provisioning. |
+| `vona-mlx` | Apple Silicon MLX audio engine facade and streaming STT/TTS contracts. |
+| `vona-mlx-speech` | Shared native Rust MLX speech model loading utilities. |
+| `vona-mlx-whisper` | Native Rust MLX Whisper speech-to-text loader and inference surface. |
+| `vona-mlx-qwen3-tts` | Native Rust MLX Qwen3 text-to-speech loader and inference surface. |
 | `vona-seamless` | Seamless M4T-style local ONNX and HTTP sidecar backend adapters. |
 | `vona-moshi` | Kyutai Moshi backend surface using WebSocket and Opus framing. |
 | `vona-transport-local` | Local HTTP/IPC transport helpers and length-prefixed CBOR framing. |
@@ -65,16 +71,19 @@ Implemented today:
 - skill execution registry with schema validation and audit events
 - context injection through `ExternalContextEvent`
 - passthrough, Seamless M4T-style, Moshi, HTTP sidecar, and local IPC surfaces
-- protocol crates for OpenAI Realtime, Gemini Live, Azure Voice Live/Speech, ElevenLabs TTS, and Deepgram STT/TTS
-- local model provisioning manifests and cache inspection for local model adapters
+- protocol crates for OpenAI Realtime, Gemini Live, Azure Voice Live/Speech, Qwen realtime voice, ElevenLabs TTS, and Deepgram STT/TTS
+- local Ollama text generation through `vona-ollama`
+- Apple Silicon MLX audio experiments through `vona-mlx`, `vona-mlx-whisper`, and `vona-mlx-qwen3-tts`
+- local model provisioning manifests, explicit artifact downloads, and cache inspection for local model adapters
 - deterministic realtime voice harness for tool-call, interruption, latency-mark, and event-order testing
 - deterministic test harnesses and release-gate benchmarks
 
 Known limits:
 
 - production transport adapters such as LiveKit are not included yet
-- the Seamless local ONNX path still needs operator-supplied model artifacts until downloader policy is enabled on top of `vona-model-provisioning`
-- text-conditioned local generation is not yet parity-complete with all deployment modes
+- the Seamless local ONNX path still needs operator-supplied model artifacts wired into a provisioning plan
+- MLX speech loaders are experimental, Apple Silicon-focused, and require explicit local model artifacts
+- Ollama text generation expects a reachable local Ollama server and an installed model such as `phi4-mini`
 - cloud provider crates currently implement config and protocol mapping, not live credentialed CI tests
 - performance SLOs beyond the deterministic release gate should be measured in your target environment
 
@@ -96,6 +105,19 @@ If Opus is installed in a non-standard prefix, set `LIBOPUS_LIB_DIR` to the pref
 
 ```bash
 export LIBOPUS_LIB_DIR=/opt/homebrew
+```
+
+Native MLX speech builds require Apple Silicon, Xcode command line tools or Xcode, and the Metal compiler:
+
+```bash
+xcode-select --install
+xcrun -f metal
+```
+
+For local release builds that exercise MLX kernels, prefer the host CPU tuning flag:
+
+```bash
+RUSTFLAGS="-C target-cpu=native" cargo build -p vona --release --features "mlx-whisper-native mlx-qwen3-tts-native"
 ```
 
 ## Quick Start
@@ -135,8 +157,24 @@ Available facade features:
 
 - `seamless`: re-export `vona-seamless`
 - `moshi`: re-export `vona-moshi`
+- `ollama`: re-export `vona-ollama`
+- `mlx`: re-export `vona-mlx`
+- `mlx-models-loader`: enable the optional `mlx-models` loader hook in `vona-mlx`
+- `mlx-whisper`: re-export `vona-mlx-whisper`
+- `mlx-qwen3-tts`: re-export `vona-mlx-qwen3-tts`
+- `mlx-native`: enable native MLX support in `vona-mlx`
+- `mlx-whisper-native`: enable native MLX support for the Whisper STT adapter
+- `mlx-qwen3-tts-native`: enable native MLX support for the Qwen3 TTS adapter
 - `transport-local`: re-export `vona-transport-local` and enable `seamless`
 - `test-harness`: re-export `vona-test-harness`
+- `openai-realtime`: re-export `vona-openai-realtime`
+- `qwen`: re-export `vona-qwen`
+- `gemini-live`: re-export `vona-gemini-live`
+- `elevenlabs`: re-export `vona-elevenlabs`
+- `deepgram`: re-export `vona-deepgram`
+- `azure-speech`: re-export `vona-azure-speech`
+- `model-provisioning`: re-export `vona-model-provisioning`
+- `cloud`: enable the hosted cloud provider protocol/component crates
 - `all`: enable every facade feature
 
 You can also depend on lower-level crates directly:
@@ -144,6 +182,7 @@ You can also depend on lower-level crates directly:
 ```bash
 cargo add vona-core
 cargo add vona-seamless
+cargo add vona-ollama
 ```
 
 From a source checkout, use path dependencies:
@@ -151,6 +190,13 @@ From a source checkout, use path dependencies:
 ```toml
 [dependencies]
 vona = { path = "crates/vona", features = ["seamless"] }
+```
+
+For local Ollama plus native MLX speech experiments from a source checkout:
+
+```toml
+[dependencies]
+vona = { path = "crates/vona", features = ["ollama", "mlx-whisper-native", "mlx-qwen3-tts-native", "model-provisioning"] }
 ```
 
 ## Minimal Backend Example
@@ -256,6 +302,24 @@ See [docs/production-backends.md](docs/production-backends.md) for operational e
 
 Adapter maturity is tracked in [docs/adapter-maturity.md](docs/adapter-maturity.md).
 
+## Local MLX And Ollama Benchmark
+
+The facade includes an ignored-by-default local benchmark example that wires Qwen3 TTS, Whisper STT, and Ollama text generation together for 100 voice+chat cases. It requires local model artifacts and a running Ollama server:
+
+```bash
+ollama pull phi4-mini
+
+export VONA_E2E_QWEN3_TTS_MODEL=/absolute/path/to/qwen3-tts
+export VONA_E2E_WHISPER_MODEL=/absolute/path/to/distil-whisper
+export VONA_E2E_OLLAMA_MODEL=phi4-mini
+
+RUSTFLAGS="-C target-cpu=native" cargo run -p vona \
+  --features "ollama mlx-whisper-native mlx-qwen3-tts-native model-provisioning" \
+  --example mlx_ollama_voice_bench --locked
+```
+
+The historical 100-case run record lives in [docs/mlx-ollama-e2e-benchmark.md](docs/mlx-ollama-e2e-benchmark.md). It documents the benchmark shape and any quality caveats for that run.
+
 ## Model-Free Demo
 
 You can run a complete Vona session without model weights, network access, or audio hardware:
@@ -280,6 +344,8 @@ It runs:
 - deterministic per-crate tests
 - all-target compile checks
 - clippy with `-D warnings`
+- optional adapter facade feature checks
+- native MLX compile checks on macOS when `xcrun metal` is available
 - deterministic transport smoke benchmarks
 - benchmark result generation in [docs/benchmark-results.md](docs/benchmark-results.md)
 
@@ -291,6 +357,11 @@ Read the full checklist in [docs/release-readiness-checklist.md](docs/release-re
 crates/
   vona/                  facade crate with optional adapter features
   vona-core/             core runtime contracts
+  vona-ollama/           local Ollama text generation adapter
+  vona-mlx/              MLX audio engine facade
+  vona-mlx-speech/       shared MLX speech loading utilities
+  vona-mlx-whisper/      native MLX Whisper STT adapter
+  vona-mlx-qwen3-tts/    native MLX Qwen3 TTS adapter
   vona-seamless/         Seamless M4T-style backend adapters
   vona-moshi/            Moshi backend surface
   vona-transport-local/  local IPC and transport helpers
@@ -323,17 +394,23 @@ The crates are intended to publish in dependency order:
 
 1. `vona-core`
 2. `vona-model-provisioning`
-3. `vona-openai-realtime`
-4. `vona-gemini-live`
-5. `vona-azure-speech`
-6. `vona-elevenlabs`
-7. `vona-deepgram`
-8. `vona-seamless`
-9. `vona-moshi`
-10. `vona-test-harness`
-11. `vona-transport-local`
-12. `vona-sidecar`
-13. `vona`
+3. `vona-ollama`
+4. `vona-mlx-speech`
+5. `vona-mlx`
+6. `vona-mlx-whisper`
+7. `vona-mlx-qwen3-tts`
+8. `vona-openai-realtime`
+9. `vona-gemini-live`
+10. `vona-azure-speech`
+11. `vona-elevenlabs`
+12. `vona-deepgram`
+13. `vona-qwen`
+14. `vona-seamless`
+15. `vona-moshi`
+16. `vona-test-harness`
+17. `vona-transport-local`
+18. `vona-sidecar`
+19. `vona`
 
 The order matters because the facade crate depends on the adapter crates, and adapter crates depend on `vona-core`.
 

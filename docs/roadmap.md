@@ -17,6 +17,8 @@ The first open-source release is expected to include:
 - Moshi WebSocket/Opus backend surface.
 - Local HTTP and Unix IPC transport helpers through `vona-transport-local` and `vona-sidecar`.
 - Provider protocol/component crates for OpenAI Realtime, Gemini Live, Azure Voice Live/Speech, ElevenLabs TTS, and Deepgram STT/TTS.
+- Local Ollama text generation through `vona-ollama`.
+- Native Rust MLX speech experiments through `vona-mlx`, `vona-mlx-speech`, `vona-mlx-whisper`, and `vona-mlx-qwen3-tts`.
 - `vona-model-provisioning` with local cache planning, explicit HTTP provisioning, streamed temp-file downloads, size checks, SHA-256 verification, and atomic cache writes.
 - Release automation for package checks, publish-order crates.io releases, changelog updates, version bumps, release gates, benchmark docs, and GitHub release creation.
 
@@ -33,7 +35,8 @@ These pieces are still pre-1.0. The contracts are ready for integration experime
 - Add CI coverage that runs the release gate on Linux and macOS with Opus installed.
 - Add credential-gated, ignored integration tests for live provider adapters once provider accounts, spend limits, and data-retention policies are explicit.
 - Build cascaded backend examples from Deepgram/Azure STT, an application LLM, and ElevenLabs/Deepgram/Azure TTS while keeping the cascade behind Vona backend traits.
-- Add provider-aware model provisioning helpers for Hugging Face and Ollama-style local model pulls.
+- Harden the local MLX + Ollama voice benchmark into a repeatable optional performance job with explicit model artifact setup.
+- Add broader provider-aware model provisioning helpers for Hugging Face and Ollama-style local model pulls.
 - Add concrete adapters for newer open realtime voice models once their serving contracts stabilize.
 
 ## Backend And Transport Work
@@ -44,7 +47,7 @@ These pieces are still pre-1.0. The contracts are ready for integration experime
 - Add a production transport adapter example once the host-application boundary is proven.
 - Promote hosted realtime protocol crates toward live WebSocket adapters with explicit feature gates and integration-test guidance.
 - Harden sidecar observability with structured health, readiness, and backend capability endpoints.
-- Keep local ONNX and Moshi-family adapters aligned with `vona-model-provisioning` manifests so Vona owns cache layout and artifact validation.
+- Keep local ONNX, MLX, and Moshi-family adapters aligned with `vona-model-provisioning` manifests so Vona owns cache layout and artifact validation.
 - Avoid moving product policy into backend crates; host applications should own admission, wake, playback, auth, and UX decisions.
 
 ## Developer Experience
