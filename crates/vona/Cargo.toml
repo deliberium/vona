@@ -16,6 +16,11 @@ documentation = "https://docs.rs/vona"
 name = "vona"
 path = "src/lib.rs"
 
+[[example]]
+name = "mlx_ollama_voice_bench"
+path = "examples/mlx_ollama_voice_bench.rs"
+required-features = ["mlx-qwen3-tts-native", "mlx-whisper-native", "ollama"]
+
 [features]
 default = []
 all = [
@@ -26,6 +31,11 @@ all = [
     "gemini-live",
     "model-provisioning",
     "moshi",
+    "mlx",
+    "mlx-models-loader",
+    "mlx-qwen3-tts",
+    "mlx-whisper",
+    "ollama",
     "openai-realtime",
     "qwen",
     "seamless",
@@ -42,6 +52,14 @@ cloud = [
 ]
 seamless = ["dep:vona-seamless"]
 moshi = ["dep:vona-moshi"]
+mlx = ["dep:vona-mlx"]
+mlx-models-loader = ["mlx", "vona-mlx/mlx-models-loader"]
+mlx-whisper = ["mlx", "dep:vona-mlx-whisper"]
+mlx-qwen3-tts = ["mlx", "dep:vona-mlx-qwen3-tts"]
+mlx-native = ["mlx", "vona-mlx/native-mlx"]
+mlx-whisper-native = ["mlx-whisper", "mlx-native", "vona-mlx-whisper/native-mlx"]
+mlx-qwen3-tts-native = ["mlx-qwen3-tts", "mlx-native", "vona-mlx-qwen3-tts/native-mlx"]
+ollama = ["dep:vona-ollama"]
 transport-local = ["seamless", "dep:vona-transport-local"]
 test-harness = ["dep:vona-test-harness"]
 openai-realtime = ["dep:vona-openai-realtime"]
@@ -60,8 +78,16 @@ vona-elevenlabs = { workspace = true, optional = true }
 vona-gemini-live = { workspace = true, optional = true }
 vona-model-provisioning = { workspace = true, optional = true }
 vona-moshi = { workspace = true, optional = true }
+vona-mlx = { workspace = true, optional = true }
+vona-mlx-qwen3-tts = { workspace = true, optional = true }
+vona-mlx-whisper = { workspace = true, optional = true }
+vona-ollama = { workspace = true, optional = true }
 vona-openai-realtime = { workspace = true, optional = true }
 vona-qwen = { workspace = true, optional = true }
 vona-seamless = { workspace = true, optional = true }
 vona-test-harness = { workspace = true, optional = true }
 vona-transport-local = { workspace = true, optional = true }
+
+[dev-dependencies]
+futures-util.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

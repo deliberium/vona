@@ -1,0 +1,27 @@
+[package]
+name = "vona-ollama"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Ollama loopback text adapter for Vona realtime voice pipelines"
+documentation = "https://docs.rs/vona-ollama"
+
+[lib]
+name = "vona_ollama"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait.workspace = true
+futures-util.workspace = true
+reqwest = { workspace = true, features = ["stream", "json"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["macros", "rt", "sync"] }
+vona-core.workspace = true

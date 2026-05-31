@@ -191,6 +191,11 @@ members = re.findall(r'"([^"]+)"', members_block)
 publish_order = [
     "vona-core",
     "vona-model-provisioning",
+    "vona-ollama",
+    "vona-mlx-speech",
+    "vona-mlx",
+    "vona-mlx-whisper",
+    "vona-mlx-qwen3-tts",
     "vona-openai-realtime",
     "vona-gemini-live",
     "vona-azure-speech",

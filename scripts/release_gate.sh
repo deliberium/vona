@@ -66,6 +66,11 @@ log "Step 2/6: deterministic crate test matrix"
 cargo test -p vona --locked
 cargo test -p vona-core --locked
 cargo test -p vona-test-harness --locked
+cargo test -p vona-ollama --locked
+cargo test -p vona-mlx --locked
+cargo test -p vona-mlx-speech --locked
+cargo test -p vona-mlx-whisper --locked
+cargo test -p vona-mlx-qwen3-tts --locked
 cargo test -p vona-seamless --locked
 cargo test -p vona-transport-local --locked
 cargo test -p vona-sidecar --locked
@@ -75,7 +80,22 @@ cargo test -p vona-gemini-live --locked
 cargo test -p vona-azure-speech --locked
 cargo test -p vona-elevenlabs --locked
 cargo test -p vona-deepgram --locked
+cargo test -p vona-qwen --locked
 cargo test -p vona-model-provisioning --locked
+
+log "Step 2b/6: optional adapter feature compile matrix"
+cargo check -p vona --features "ollama mlx mlx-whisper mlx-qwen3-tts model-provisioning" --locked
+
+if [[ "$(uname -s)" == "Darwin" ]] && command -v xcrun >/dev/null 2>&1 && xcrun -f metal >/dev/null 2>&1; then
+  log "Step 2c/6: native MLX compile matrix"
+  cargo check -p vona-mlx-speech --features native-mlx --locked
+  cargo check -p vona-mlx --features "native-mlx mlx-models-loader" --locked
+  cargo check -p vona-mlx-whisper --features native-mlx --locked
+  cargo check -p vona-mlx-qwen3-tts --features native-mlx --locked
+  cargo check -p vona --features "ollama mlx-whisper-native mlx-qwen3-tts-native model-provisioning" --locked
+else
+  log "Step 2c/6: skipping native MLX compile matrix; macOS Metal compiler not available"
+fi
 
 log "Step 3/6: cargo check --workspace --all-targets --locked"
 cargo check --workspace --all-targets --locked

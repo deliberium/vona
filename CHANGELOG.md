@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `vona-core` generation contracts for text token streaming plus decoupled audio transcription and synthesis traits.
+- `vona-ollama` loopback text adapter for Ollama `/api/generate` streaming, exposed through the umbrella `vona/ollama` feature.
+- `vona-mlx` Apple Silicon MLX audio engine facade, optional `mlx-models` text-loader hook, and umbrella MLX feature exports.
+- `vona-mlx-speech` shared native Rust speech model loading utilities for safetensors discovery, metadata parsing, and MLX tensor materialization.
+- `vona-mlx-whisper` native MLX Whisper loader and smoke example surface for local speech recognition experiments.
+- `vona-mlx-qwen3-tts` native MLX Qwen3 TTS loader and smoke example surface for local speech synthesis.
+- Vona model-provisioning manifests for Distil-Whisper Large V3 and the bf16 MLX Qwen3 TTS checkpoint so downstream apps can explicitly download speech assets before loading `vona-mlx`.
+- `mlx_ollama_voice_bench` example and MLX/Ollama benchmark documentation covering the local voice pipeline validation flow.
+
+### Changed
+
+- Split the MLX backend surface into granular contracts and crates so Ollama text generation, MLX audio orchestration, shared speech loading, Whisper, and Qwen3 TTS remain independently optional.
+- Split `vona-mlx` feature gates so `native-mlx` enables only the MLX runtime and `mlx-models-loader` opts into the heavier `mlx-models` and tokenizer text-loader stack.
+- Narrowed workspace `reqwest` defaults so local Ollama-only builds do not inherit TLS support, while remote HTTPS crates opt into Rustls explicitly.
+- Removed unused direct dependency surface from `vona-mlx` after the bloat review without changing runtime behavior.
+
+### Fixed
+
+- Corrected native Qwen3 TTS vocoder transposed-convolution stride inference so 12.5 Hz speech tokens decode to the expected 24 kHz waveform duration.
+- Corrected the Ollama Phi mini default tag to `phi4-mini`, matching the Ollama library tag accepted by `ollama pull`.
+- Updated benchmark notes to mark the earlier long-run Qwen3 TTS timings as historical because they were collected before the stride fix.
+
 ## [0.1.1] - 2026-05-16
 
 ### Added

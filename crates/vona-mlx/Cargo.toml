@@ -1,0 +1,36 @@
+[package]
+name = "vona-mlx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Native MLX audio adapter hooks for Vona on Apple Silicon"
+documentation = "https://docs.rs/vona-mlx"
+
+[lib]
+name = "vona_mlx"
+path = "src/lib.rs"
+
+[features]
+default = []
+native-mlx = ["dep:mlx-rs"]
+mlx-models-loader = ["native-mlx", "dep:mlx-models", "dep:tokenizers"]
+
+[dependencies]
+async-trait.workspace = true
+mlx-models = { workspace = true, optional = true }
+mlx-rs = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt"] }
+tokenizers = { workspace = true, optional = true }
+vona-core.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

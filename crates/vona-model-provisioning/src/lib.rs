@@ -296,6 +296,70 @@ pub fn seamless_m4t_onnx_manifest(
     }
 }
 
+pub fn distil_whisper_large_v3_manifest() -> ModelManifest {
+    hf_snapshot_manifest(
+        "distil-whisper/distil-large-v3",
+        &[
+            "config.json",
+            "generation_config.json",
+            "model.safetensors",
+            "normalizer.json",
+            "preprocessor_config.json",
+            "special_tokens_map.json",
+            "tokenizer.json",
+            "tokenizer_config.json",
+            "vocab.json",
+        ],
+    )
+}
+
+pub fn qwen3_tts_12hz_0_6b_base_bf16_manifest() -> ModelManifest {
+    hf_snapshot_manifest(
+        "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-bf16",
+        &[
+            "config.json",
+            "generation_config.json",
+            "merges.txt",
+            "model.safetensors",
+            "model.safetensors.index.json",
+            "preprocessor_config.json",
+            "speech_tokenizer/config.json",
+            "speech_tokenizer/configuration.json",
+            "speech_tokenizer/model.safetensors",
+            "speech_tokenizer/preprocessor_config.json",
+            "tokenizer_config.json",
+            "vocab.json",
+        ],
+    )
+}
+
+pub fn mlx_speech_model_manifests() -> [ModelManifest; 2] {
+    [
+        distil_whisper_large_v3_manifest(),
+        qwen3_tts_12hz_0_6b_base_bf16_manifest(),
+    ]
+}
+
+fn hf_snapshot_manifest(repo: &str, files: &[&str]) -> ModelManifest {
+    ModelManifest {
+        id: repo.to_string(),
+        provider: LocalModelProvider::HuggingFace {
+            repo: repo.to_string(),
+            revision: None,
+        },
+        artifacts: files
+            .iter()
+            .map(|file| ModelArtifact {
+                name: (*file).to_string(),
+                relative_path: PathBuf::from(file),
+                source_url: Some(format!("https://huggingface.co/{repo}/resolve/main/{file}")),
+                expected_size_bytes: None,
+                sha256: None,
+            })
+            .collect(),
+    }
+}
+
 pub fn moshi_server_manifest(model: impl Into<String>) -> ModelManifest {
     let model = model.into();
     ModelManifest {
@@ -440,6 +504,34 @@ mod tests {
             LocalModelProvider::ProviderManaged { .. }
         ));
         assert!(validate_manifest(&manifest).is_ok());
+    }
+
+    #[test]
+    fn mlx_speech_manifests_are_valid_hugging_face_snapshots() {
+        let manifests = mlx_speech_model_manifests();
+        assert_eq!(manifests.len(), 2);
+        for manifest in manifests {
+            validate_manifest(&manifest).unwrap();
+            assert!(matches!(
+                manifest.provider,
+                LocalModelProvider::HuggingFace { .. }
+            ));
+            assert!(
+                manifest
+                    .artifacts
+                    .iter()
+                    .any(|artifact| artifact.relative_path == std::path::Path::new("config.json"))
+            );
+            assert!(manifest.artifacts.iter().any(
+                |artifact| artifact.relative_path == std::path::Path::new("model.safetensors")
+            ));
+            assert!(
+                manifest
+                    .artifacts
+                    .iter()
+                    .all(|artifact| artifact.source_url.is_some())
+            );
+        }
     }
 
     #[test]
