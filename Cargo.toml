@@ -26,7 +26,7 @@ resolver = "2"
 edition = "2024"
 rust-version = "1.88"
 license = "MIT"
-version = "0.1.1"
+version = "0.2.0"
 authors = ["Deliberium contributors"]
 repository = "https://github.com/deliberium/vona"
 homepage = "https://github.com/deliberium/vona"
@@ -63,20 +63,20 @@ tokio-tungstenite = { version = "0.24", default-features = false, features = ["n
 tokenizers = "0.22"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-vona-core = { version = "0.1.1", path = "crates/vona-core" }
-vona-azure-speech = { version = "0.1.1", path = "crates/vona-azure-speech" }
-vona-deepgram = { version = "0.1.1", path = "crates/vona-deepgram" }
-vona-elevenlabs = { version = "0.1.1", path = "crates/vona-elevenlabs" }
-vona-gemini-live = { version = "0.1.1", path = "crates/vona-gemini-live" }
-vona-model-provisioning = { version = "0.1.1", path = "crates/vona-model-provisioning" }
-vona-moshi = { version = "0.1.1", path = "crates/vona-moshi" }
-vona-mlx = { version = "0.1.1", path = "crates/vona-mlx" }
-vona-mlx-qwen3-tts = { version = "0.1.1", path = "crates/vona-mlx-qwen3-tts" }
-vona-mlx-speech = { version = "0.1.1", path = "crates/vona-mlx-speech" }
-vona-mlx-whisper = { version = "0.1.1", path = "crates/vona-mlx-whisper" }
-vona-ollama = { version = "0.1.1", path = "crates/vona-ollama" }
-vona-openai-realtime = { version = "0.1.1", path = "crates/vona-openai-realtime" }
-vona-qwen = { version = "0.1.1", path = "crates/vona-qwen" }
-vona-seamless = { version = "0.1.1", path = "crates/vona-seamless" }
-vona-test-harness = { version = "0.1.1", path = "crates/vona-test-harness" }
-vona-transport-local = { version = "0.1.1", path = "crates/vona-transport-local" }
+vona-core = { version = "0.2.0", path = "crates/vona-core" }
+vona-azure-speech = { version = "0.2.0", path = "crates/vona-azure-speech" }
+vona-deepgram = { version = "0.2.0", path = "crates/vona-deepgram" }
+vona-elevenlabs = { version = "0.2.0", path = "crates/vona-elevenlabs" }
+vona-gemini-live = { version = "0.2.0", path = "crates/vona-gemini-live" }
+vona-model-provisioning = { version = "0.2.0", path = "crates/vona-model-provisioning" }
+vona-moshi = { version = "0.2.0", path = "crates/vona-moshi" }
+vona-mlx = { version = "0.2.0", path = "crates/vona-mlx" }
+vona-mlx-qwen3-tts = { version = "0.2.0", path = "crates/vona-mlx-qwen3-tts" }
+vona-mlx-speech = { version = "0.2.0", path = "crates/vona-mlx-speech" }
+vona-mlx-whisper = { version = "0.2.0", path = "crates/vona-mlx-whisper" }
+vona-ollama = { version = "0.2.0", path = "crates/vona-ollama" }
+vona-openai-realtime = { version = "0.2.0", path = "crates/vona-openai-realtime" }
+vona-qwen = { version = "0.2.0", path = "crates/vona-qwen" }
+vona-seamless = { version = "0.2.0", path = "crates/vona-seamless" }
+vona-test-harness = { version = "0.2.0", path = "crates/vona-test-harness" }
+vona-transport-local = { version = "0.2.0", path = "crates/vona-transport-local" }

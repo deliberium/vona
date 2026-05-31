@@ -263,10 +263,18 @@ if version != old_version:
         flags=re.M,
     )
     workspace = re.sub(
-        r'(vona[-a-z]*\s*=\s*\{\s*version\s*=\s*)"\d+\.\d+\.\d+"',
+        r'(vona[-a-z0-9]*\s*=\s*\{\s*version\s*=\s*)"\d+\.\d+\.\d+"',
         rf'\1"{version}"',
         workspace,
     )
+    stale_workspace_deps = re.findall(
+        rf'^(vona[-a-z0-9]*)\s*=\s*\{{\s*version\s*=\s*"(?!{re.escape(version)}")([^"]+)"',
+        workspace,
+        re.M,
+    )
+    if stale_workspace_deps:
+        details = ", ".join(f"{name}={dep_version}" for name, dep_version in stale_workspace_deps)
+        raise SystemExit(f"workspace Vona dependency versions did not update to {version}: {details}")
     workspace_path.write_text(workspace)
 
 changelog_path = root / "CHANGELOG.md"

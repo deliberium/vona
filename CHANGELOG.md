@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-05-31
+
 ### Added
 
 - `vona-core` generation contracts for text token streaming plus decoupled audio transcription and synthesis traits.
@@ -59,7 +61,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI clippy compatibility for newer Rust toolchains in the Moshi WebSocket receive loop.
 - Hosted realtime response completion is no longer treated as session closure.
 
-[Unreleased]: https://github.com/deliberium/vona/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/deliberium/vona/compare/v0.2.0...HEAD
 [0.1.0]: https://github.com/deliberium/vona/releases/tag/v0.1.0
 
 [0.1.1]: https://github.com/deliberium/vona/releases/tag/v0.1.1
+
+[0.2.0]: https://github.com/deliberium/vona/releases/tag/v0.2.0
