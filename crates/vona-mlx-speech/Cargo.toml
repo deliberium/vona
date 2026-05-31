@@ -1,0 +1,28 @@
+[package]
+name = "vona-mlx-speech"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Shared native MLX speech model loading utilities for Vona"
+documentation = "https://docs.rs/vona-mlx-speech"
+
+[lib]
+name = "vona_mlx_speech"
+path = "src/lib.rs"
+
+[features]
+default = []
+native-mlx = ["dep:half", "dep:mlx-rs"]
+
+[dependencies]
+half = { workspace = true, optional = true }
+mlx-rs = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

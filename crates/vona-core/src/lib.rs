@@ -1,5 +1,6 @@
 pub mod backend;
 pub mod backends;
+pub mod generation;
 pub mod realtime;
 pub mod runtime;
 pub mod session;
@@ -9,6 +10,12 @@ pub mod types;
 
 pub use backend::{BackendCapabilities, BackendError, BackendStep, SpeechToSpeechBackend};
 pub use backends::passthrough::PassthroughStsBackend;
+pub use generation::{
+    AudioProcessingError, AudioStreamingTranscriber, AudioSynthesisConfig, AudioSynthesizer,
+    AudioTranscriber, StreamingTranscriptKind, StreamingTranscriptUpdate,
+    StreamingTranscriptionConfig, StreamingTranscriptionSession, TextGenerationError,
+    TextGenerationFrame, TextGenerationInput, TextGenerator, TokenStream,
+};
 pub use realtime::{
     RealtimeLatencyMark, RealtimeLatencyStage, RealtimeVoiceBackend, RealtimeVoiceCapabilities,
     RealtimeVoiceControl, RealtimeVoiceError, RealtimeVoiceInput, RealtimeVoiceModelFamily,
