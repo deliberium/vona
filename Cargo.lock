@@ -3256,7 +3256,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vona"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "futures-util",
  "tokio",
@@ -3280,7 +3280,7 @@ dependencies = [
 
 [[package]]
 name = "vona-azure-speech"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3290,7 +3290,7 @@ dependencies = [
 
 [[package]]
 name = "vona-core"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "futures-core",
@@ -3303,7 +3303,7 @@ dependencies = [
 
 [[package]]
 name = "vona-deepgram"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3313,7 +3313,7 @@ dependencies = [
 
 [[package]]
 name = "vona-elevenlabs"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -3323,7 +3323,7 @@ dependencies = [
 
 [[package]]
 name = "vona-gemini-live"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -3334,7 +3334,7 @@ dependencies = [
 
 [[package]]
 name = "vona-mlx"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "mlx-models",
@@ -3349,7 +3349,7 @@ dependencies = [
 
 [[package]]
 name = "vona-mlx-qwen3-tts"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "mlx-rs",
  "serde",
@@ -3361,7 +3361,7 @@ dependencies = [
 
 [[package]]
 name = "vona-mlx-speech"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "half 2.7.1",
  "mlx-rs",
@@ -3372,7 +3372,7 @@ dependencies = [
 
 [[package]]
 name = "vona-mlx-whisper"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "mlx-rs",
  "serde",
@@ -3383,7 +3383,7 @@ dependencies = [
 
 [[package]]
 name = "vona-model-provisioning"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "futures-util",
  "reqwest",
@@ -3396,7 +3396,7 @@ dependencies = [
 
 [[package]]
 name = "vona-moshi"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "byteorder",
@@ -3415,7 +3415,7 @@ dependencies = [
 
 [[package]]
 name = "vona-ollama"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "futures-util",
@@ -3429,7 +3429,7 @@ dependencies = [
 
 [[package]]
 name = "vona-openai-realtime"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -3440,7 +3440,7 @@ dependencies = [
 
 [[package]]
 name = "vona-qwen"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "serde",
@@ -3451,7 +3451,7 @@ dependencies = [
 
 [[package]]
 name = "vona-seamless"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "criterion",
@@ -3467,7 +3467,7 @@ dependencies = [
 
 [[package]]
 name = "vona-sidecar"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -3483,7 +3483,7 @@ dependencies = [
 
 [[package]]
 name = "vona-test-harness"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "criterion",
@@ -3498,7 +3498,7 @@ dependencies = [
 
 [[package]]
 name = "vona-transport-local"
-version = "0.3.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -254,6 +254,21 @@ elif release_type == "patch":
 version = f"{major}.{minor}.{patch}"
 old_version = current.group(0).split('"')[1]
 
+changelog_path = root / "CHANGELOG.md"
+if changelog_path.exists():
+    changelog_before_release = changelog_path.read_text()
+    unreleased_match = re.search(
+        r"^## \[Unreleased\]\n(?P<body>.*?)(?=^## \[|\n\[[^\]]+\]:|\Z)",
+        changelog_before_release,
+        re.M | re.S,
+    )
+    unreleased_body = unreleased_match.group("body").strip() if unreleased_match else ""
+    if release_type != "current" and not unreleased_body:
+        raise SystemExit(
+            "CHANGELOG.md has no Unreleased notes to release; "
+            "use --release current to publish the current version or add release notes first"
+        )
+
 if version != old_version:
     workspace = re.sub(
         r'^version\s*=\s*"\d+\.\d+\.\d+"',
@@ -277,7 +292,6 @@ if version != old_version:
         raise SystemExit(f"workspace Vona dependency versions did not update to {version}: {details}")
     workspace_path.write_text(workspace)
 
-changelog_path = root / "CHANGELOG.md"
 if changelog_path.exists():
     changelog = changelog_path.read_text()
     today = date.today().isoformat()
@@ -303,12 +317,14 @@ if changelog_path.exists():
         changelog,
         re.M | re.S,
     )
-    if match:
-        release_notes_path.write_text(match.group(0).strip() + "\n")
-    else:
-        release_notes_path.write_text(f"## [{version}]\n\nRelease v{version}.\n")
+    if not match:
+        raise SystemExit(f"CHANGELOG.md does not contain a section for {version}")
+    release_body = match.group("body").strip()
+    if not release_body:
+        raise SystemExit(f"CHANGELOG.md section for {version} is empty; refusing to create empty release notes")
+    release_notes_path.write_text(match.group(0).strip() + "\n")
 else:
-    release_notes_path.write_text(f"## [{version}]\n\nRelease v{version}.\n")
+    raise SystemExit("CHANGELOG.md is required to generate release notes")
 (root / "target" / "vona-release-version.txt").write_text(version + "\n")
 print(version)
 PY
