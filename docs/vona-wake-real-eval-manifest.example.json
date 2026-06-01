@@ -1,0 +1,186 @@
+{
+  "corpus": {
+    "id": "vona-wake-office-v1",
+    "version": "2026-06-01",
+    "source": "human-recorded",
+    "created_by": "vona wake evaluation team",
+    "notes": "Consent records and raw recordings are tracked outside this manifest.",
+    "collection_ledger_sha256": "replace-with-ledger-sha256"
+  },
+  "collection_ledger": {
+    "consent_protocol": "vona-wake-consent-v1",
+    "collection_protocol": "vona-wake-office-recording-v1",
+    "collected_by": ["operator-a"],
+    "collection_started_at": "2026-06-01T09:00:00Z",
+    "collection_completed_at": "2026-06-01T17:00:00Z",
+    "speakers": [
+      {
+        "speaker_id": "speaker-a",
+        "consent_record": "consent/speaker-a.md",
+        "consent_obtained_at": "2026-06-01T09:00:00Z"
+      },
+      {
+        "speaker_id": "guest-a",
+        "consent_record": "consent/guest-a.md",
+        "consent_obtained_at": "2026-06-01T10:00:00Z"
+      },
+      {
+        "speaker_id": "speaker-b",
+        "consent_record": "consent/speaker-b.md",
+        "consent_obtained_at": "2026-06-01T11:00:00Z"
+      },
+      {
+        "speaker_id": "speaker-c",
+        "consent_record": "consent/speaker-c.md",
+        "consent_obtained_at": "2026-06-01T12:00:00Z"
+      },
+      {
+        "speaker_id": "background",
+        "consent_record": "consent/background-session.md",
+        "consent_obtained_at": "2026-06-01T13:00:00Z"
+      }
+    ],
+    "devices": [
+      {
+        "device_id": "built-in-mic",
+        "recorder": "macOS afrecord",
+        "sample_rate_hz": 16000
+      },
+      {
+        "device_id": "usb-mic",
+        "recorder": "macOS afrecord",
+        "sample_rate_hz": 16000
+      }
+    ],
+    "sessions": [
+      {
+        "session_id": "session-a",
+        "collected_at": "2026-06-01T09:00:00Z",
+        "operator": "operator-a"
+      },
+      {
+        "session_id": "session-b",
+        "collected_at": "2026-06-01T13:00:00Z",
+        "operator": "operator-a"
+      }
+    ],
+    "notes": "Ledger can reference external consent records without embedding private details."
+  },
+  "templates": [
+    {
+      "phrase": "hey vona",
+      "path": "enrollment/authorized-speaker-hey-vona-01.wav",
+      "speaker_id": "speaker-a",
+      "source_type": "human-recorded",
+      "session_id": "session-a",
+      "split": "enrollment"
+    },
+    {
+      "phrase": "vona",
+      "path": "enrollment/authorized-speaker-vona-01.wav",
+      "speaker_id": "speaker-a",
+      "source_type": "human-recorded",
+      "session_id": "session-a",
+      "split": "enrollment"
+    }
+  ],
+  "policy": {
+    "candidate_threshold": 0.88,
+    "accept_threshold": 0.92,
+    "speaker_threshold": 0.78,
+    "min_energy": 0.0005,
+    "preroll_ms": 1200,
+    "rearm_ms": 1200,
+    "require_speaker_verification": true
+  },
+  "cases": [
+    {
+      "id": "authorized-hey-vona-clean-01",
+      "path": "positives/authorized-hey-vona-clean-01.wav",
+      "text": "hey vona",
+      "wake_start_ms": 0,
+      "speaker_id": "speaker-a",
+      "environment": "quiet-office",
+      "distance": "near",
+      "device": "built-in-mic",
+      "session_id": "session-a",
+      "category": "wake-positive",
+      "source_type": "human-recorded",
+      "split": "evaluation",
+      "should_wake": true,
+      "expected_phrase": "hey vona"
+    },
+    {
+      "id": "authorized-vona-clean-01",
+      "path": "positives/authorized-vona-clean-01.wav",
+      "text": "vona",
+      "wake_start_ms": 0,
+      "speaker_id": "speaker-b",
+      "environment": "quiet-office",
+      "distance": "near",
+      "device": "built-in-mic",
+      "session_id": "session-b",
+      "category": "wake-positive",
+      "source_type": "human-recorded",
+      "split": "calibration",
+      "should_wake": true,
+      "expected_phrase": "vona"
+    },
+    {
+      "id": "unauthorized-hey-vona-01",
+      "path": "negatives/unauthorized-hey-vona-01.wav",
+      "text": "hey vona",
+      "speaker_id": "guest-a",
+      "environment": "quiet-office",
+      "distance": "near",
+      "device": "built-in-mic",
+      "session_id": "session-a",
+      "category": "unauthorized-wake",
+      "source_type": "human-recorded",
+      "split": "evaluation",
+      "should_wake": false
+    },
+    {
+      "id": "near-miss-hey-luna-01",
+      "path": "negatives/near-miss-hey-luna-01.wav",
+      "text": "hey luna",
+      "speaker_id": "speaker-a",
+      "environment": "quiet-office",
+      "distance": "near",
+      "device": "built-in-mic",
+      "session_id": "session-b",
+      "category": "near-miss",
+      "source_type": "human-recorded",
+      "split": "calibration",
+      "should_wake": false
+    },
+    {
+      "id": "background-meeting-01",
+      "path": "negatives/background-meeting-01.wav",
+      "text": "the meeting starts in ten minutes",
+      "speaker_id": "speaker-c",
+      "environment": "meeting-room",
+      "distance": "mid",
+      "device": "usb-mic",
+      "session_id": "session-a",
+      "category": "ordinary-speech",
+      "source_type": "human-recorded",
+      "split": "evaluation",
+      "should_wake": false
+    },
+    {
+      "id": "long-background-office-01",
+      "path": "negatives/long-background-office-01.wav",
+      "text": "long office/background recording with no wake phrase",
+      "speaker_id": "background",
+      "environment": "open-office",
+      "distance": "far",
+      "device": "built-in-mic",
+      "session_id": "session-b",
+      "category": "background-speech",
+      "source_type": "human-recorded",
+      "split": "evaluation",
+      "should_wake": false
+    }
+  ]
+}

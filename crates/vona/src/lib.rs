@@ -158,4 +158,14 @@ pub use vona_transport_local::{
     LocalIpcTransportInitError,
 };
 
+#[cfg(feature = "wake")]
+pub use vona_wake as wake;
+#[cfg(feature = "wake")]
+pub use vona_wake::{
+    EmbeddingSpeakerVerifier, EnergyWakeDetector, NoopSpeakerVerifier, SpeakerMatch,
+    SpeakerProfile, SpeakerVerification, SpeakerVerifier, TemplateWakeDetector, WakeCandidate,
+    WakeContext, WakeDecision, WakeDetector, WakeGate, WakeGatedTransport, WakeMetrics, WakePolicy,
+    WakeRejectReason, WakeState, WakeTemplate, WakeTransportError, simple_audio_embedding,
+};
+
 pub const CRATE_NAME: &str = "vona";

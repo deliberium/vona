@@ -1,0 +1,46 @@
+[package]
+name = "vona-wake"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Wake admission, wake-gated transport, and optional speaker verification primitives for Vona"
+documentation = "https://docs.rs/vona-wake"
+
+[lib]
+name = "vona_wake"
+path = "src/lib.rs"
+
+[[bench]]
+name = "wake_gate"
+harness = false
+
+[[example]]
+name = "live_wake_stream"
+path = "examples/live_wake_stream.rs"
+
+[[example]]
+name = "generated_voice_eval"
+path = "examples/generated_voice_eval.rs"
+
+[[example]]
+name = "real_voice_eval"
+path = "examples/real_voice_eval.rs"
+
+[dependencies]
+async-trait.workspace = true
+ring.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["sync"] }
+vona-core.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

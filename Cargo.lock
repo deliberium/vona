@@ -3276,6 +3276,7 @@ dependencies = [
  "vona-seamless",
  "vona-test-harness",
  "vona-transport-local",
+ "vona-wake",
 ]
 
 [[package]]
@@ -3511,6 +3512,20 @@ dependencies = [
  "tokio",
  "vona-core",
  "vona-seamless",
+]
+
+[[package]]
+name = "vona-wake"
+version = "0.2.0"
+dependencies = [
+ "async-trait",
+ "criterion",
+ "ring",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "vona-core",
 ]
 
 [[package]]

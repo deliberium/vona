@@ -18,6 +18,7 @@ members = [
     "crates/vona-seamless",
     "crates/vona-test-harness",
     "crates/vona-transport-local",
+    "crates/vona-wake",
     "crates/vona-sidecar",
 ]
 resolver = "2"
@@ -80,3 +81,4 @@ vona-qwen = { version = "0.2.0", path = "crates/vona-qwen" }
 vona-seamless = { version = "0.2.0", path = "crates/vona-seamless" }
 vona-test-harness = { version = "0.2.0", path = "crates/vona-test-harness" }
 vona-transport-local = { version = "0.2.0", path = "crates/vona-transport-local" }
+vona-wake = { version = "0.2.0", path = "crates/vona-wake" }

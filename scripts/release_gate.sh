@@ -65,6 +65,7 @@ cargo check --workspace --locked
 log "Step 2/6: deterministic crate test matrix"
 cargo test -p vona --locked
 cargo test -p vona-core --locked
+cargo test -p vona-wake --locked
 cargo test -p vona-test-harness --locked
 cargo test -p vona-ollama --locked
 cargo test -p vona-mlx --locked
@@ -96,6 +97,34 @@ if [[ "$(uname -s)" == "Darwin" ]] && command -v xcrun >/dev/null 2>&1 && xcrun 
 else
   log "Step 2c/6: skipping native MLX compile matrix; macOS Metal compiler not available"
 fi
+
+log "Step 2d/6: vona-wake generated and optional real voice evaluation"
+VONA_WAKE_EVAL_CARGO_FLAGS="--locked" scripts/run_vona_wake_eval.sh
+
+log "Step 2e/6: vona-wake evidence checker tests"
+python3 -m unittest \
+  tests/test_vona_wake_acceptance.py \
+  tests/test_vona_wake_collection_ledger.py \
+  tests/test_vona_wake_eval_runner.py \
+  tests/test_vona_wake_evidence_package.py \
+  tests/test_vona_wake_evidence_status.py \
+  tests/test_vona_wake_label_semantics.py \
+  tests/test_vona_wake_recorder.py \
+  tests/test_vona_wake_recording_progress.py \
+  tests/test_vona_wake_threshold_selection.py
+
+log "Step 2f/6: package vona-wake evidence artifacts"
+PACKAGE_ARGS=(
+  --report-dir "${ROOT_DIR}/target/vona-wake-eval"
+  --output-dir "${ROOT_DIR}/target/vona-wake-evidence"
+)
+if [[ "${VONA_WAKE_EVIDENCE_PACKAGE_ZIP:-0}" == "1" ]]; then
+  PACKAGE_ARGS+=(--zip)
+fi
+if [[ "${VONA_WAKE_REQUIRE_REAL_EVAL:-0}" == "1" || "${VONA_WAKE_EVIDENCE_PACKAGE_ENFORCE:-0}" == "1" ]]; then
+  PACKAGE_ARGS+=(--enforce)
+fi
+scripts/package_vona_wake_evidence.py "${PACKAGE_ARGS[@]}"
 
 log "Step 3/6: cargo check --workspace --all-targets --locked"
 cargo check --workspace --all-targets --locked

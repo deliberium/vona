@@ -41,6 +41,7 @@ all = [
     "seamless",
     "test-harness",
     "transport-local",
+    "wake",
 ]
 cloud = [
     "azure-speech",
@@ -61,6 +62,7 @@ mlx-whisper-native = ["mlx-whisper", "mlx-native", "vona-mlx-whisper/native-mlx"
 mlx-qwen3-tts-native = ["mlx-qwen3-tts", "mlx-native", "vona-mlx-qwen3-tts/native-mlx"]
 ollama = ["dep:vona-ollama"]
 transport-local = ["seamless", "dep:vona-transport-local"]
+wake = ["dep:vona-wake"]
 test-harness = ["dep:vona-test-harness"]
 openai-realtime = ["dep:vona-openai-realtime"]
 qwen = ["dep:vona-qwen"]
@@ -87,6 +89,7 @@ vona-qwen = { workspace = true, optional = true }
 vona-seamless = { workspace = true, optional = true }
 vona-test-harness = { workspace = true, optional = true }
 vona-transport-local = { workspace = true, optional = true }
+vona-wake = { workspace = true, optional = true }
 
 [dev-dependencies]
 futures-util.workspace = true

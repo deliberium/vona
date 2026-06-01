@@ -30,7 +30,10 @@ Use Vona when you want:
 - provider-neutral traits that let one host application try multiple STS backends
 - a small core crate that does not own your product policy or UX
 
-Do not use Vona if you need a turnkey assistant, hosted model service, wake-word engine, audio device stack, or production WebRTC integration out of the box.
+Do not use Vona if you need a turnkey assistant, hosted model service, audio
+device stack, or production WebRTC integration out of the box. Vona includes
+wake admission primitives through `vona-wake`, but applications still own
+microphone permissions, enrollment, consent, profile storage, and product policy.
 
 ## What Is In This Repository
 
@@ -53,10 +56,15 @@ Do not use Vona if you need a turnkey assistant, hosted model service, wake-word
 | `vona-seamless` | Seamless M4T-style local ONNX and HTTP sidecar backend adapters. |
 | `vona-moshi` | Kyutai Moshi backend surface using WebSocket and Opus framing. |
 | `vona-transport-local` | Local HTTP/IPC transport helpers and length-prefixed CBOR framing. |
+| `vona-wake` | Wake admission, wake-gated transport, and optional speaker verification primitives. |
 | `vona-sidecar` | Sidecar binary exposing Vona backends over HTTP and Unix-socket IPC. |
 | `vona-test-harness` | Deterministic mock backend, scripted transport, fixtures, and benchmark harnesses. |
 
 The workspace is backend-agnostic by design. Provider-specific integrations live in adapter crates; the `vona-core` crate stays focused on stable contracts, while `vona` is the crates.io facade for applications that want one dependency with opt-in features.
+
+See [`docs/vona-wake.md`](docs/vona-wake.md) for the Vona Wake architecture,
+speaker-gated admission model, evaluation harness, and real-corpus evidence
+workflow.
 
 ## Current Status
 
@@ -70,6 +78,7 @@ Implemented today:
 - session driver with metrics for first audio, tool calls, interruptions, and fallback decisions
 - skill execution registry with schema validation and audit events
 - context injection through `ExternalContextEvent`
+- wake admission, template wake detection, wake-gated transport, and optional speaker verification primitives
 - passthrough, Seamless M4T-style, Moshi, HTTP sidecar, and local IPC surfaces
 - protocol crates for OpenAI Realtime, Gemini Live, Azure Voice Live/Speech, Qwen realtime voice, ElevenLabs TTS, and Deepgram STT/TTS
 - local Ollama text generation through `vona-ollama`
@@ -166,6 +175,7 @@ Available facade features:
 - `mlx-whisper-native`: enable native MLX support for the Whisper STT adapter
 - `mlx-qwen3-tts-native`: enable native MLX support for the Qwen3 TTS adapter
 - `transport-local`: re-export `vona-transport-local` and enable `seamless`
+- `wake`: re-export `vona-wake`
 - `test-harness`: re-export `vona-test-harness`
 - `openai-realtime`: re-export `vona-openai-realtime`
 - `qwen`: re-export `vona-qwen`
@@ -365,6 +375,7 @@ crates/
   vona-seamless/         Seamless M4T-style backend adapters
   vona-moshi/            Moshi backend surface
   vona-transport-local/  local IPC and transport helpers
+  vona-wake/             wake admission, template detection, and optional speaker verification
   vona-sidecar/          sidecar binary
   vona-test-harness/     deterministic tests and benchmarks
 docs/                    architecture, backend, benchmark, and release docs
@@ -393,24 +404,25 @@ The current roadmap is in [docs/roadmap.md](docs/roadmap.md).
 The crates are intended to publish in dependency order:
 
 1. `vona-core`
-2. `vona-model-provisioning`
-3. `vona-ollama`
-4. `vona-mlx-speech`
-5. `vona-mlx`
-6. `vona-mlx-whisper`
-7. `vona-mlx-qwen3-tts`
-8. `vona-openai-realtime`
-9. `vona-gemini-live`
-10. `vona-azure-speech`
-11. `vona-elevenlabs`
-12. `vona-deepgram`
-13. `vona-qwen`
-14. `vona-seamless`
-15. `vona-moshi`
-16. `vona-test-harness`
-17. `vona-transport-local`
-18. `vona-sidecar`
-19. `vona`
+2. `vona-wake`
+3. `vona-model-provisioning`
+4. `vona-ollama`
+5. `vona-mlx-speech`
+6. `vona-mlx`
+7. `vona-mlx-whisper`
+8. `vona-mlx-qwen3-tts`
+9. `vona-openai-realtime`
+10. `vona-gemini-live`
+11. `vona-azure-speech`
+12. `vona-elevenlabs`
+13. `vona-deepgram`
+14. `vona-qwen`
+15. `vona-seamless`
+16. `vona-moshi`
+17. `vona-test-harness`
+18. `vona-transport-local`
+19. `vona-sidecar`
+20. `vona`
 
 The order matters because the facade crate depends on the adapter crates, and adapter crates depend on `vona-core`.
 
