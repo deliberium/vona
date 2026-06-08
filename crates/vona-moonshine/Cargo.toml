@@ -1,0 +1,25 @@
+[package]
+name = "vona-moonshine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Moonshine local streaming STT worker adapter for Vona"
+documentation = "https://docs.rs/vona-moonshine"
+
+[lib]
+name = "vona_moonshine"
+path = "src/lib.rs"
+
+[dependencies]
+async-trait.workspace = true
+libloading.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["io-std", "io-util", "macros", "process", "rt", "sync"] }
+vona-core.workspace = true

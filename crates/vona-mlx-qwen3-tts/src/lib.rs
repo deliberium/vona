@@ -713,6 +713,260 @@ impl Qwen3TtsSpeechModel {
         Ok(frames)
     }
 
+    fn generate_codec_frames_streaming(
+        &self,
+        prefix: &MlxArray,
+        trailing_text: &MlxArray,
+        chunk_audio_tokens: usize,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<Vec<Vec<u32>>, MlxAudioError> {
+        let weights = self
+            .weights
+            .lock()
+            .map_err(|_| MlxAudioError::Runtime("Qwen3 TTS weight lock is poisoned".to_string()))?;
+        let weights = MlxWeightView::new(&weights);
+        let tts_pad = self.embed_tts_pad(&weights)?;
+        let mut sequence = prefix.clone();
+        let mut frames = Vec::new();
+        let mut generated_main_codes = HashSet::new();
+        let mut rng = XorShift64::from_entropy();
+        let chunk_audio_tokens = chunk_audio_tokens.max(1);
+        let stable_tail_samples = env_usize("VONA_MLX_QWEN3_TTS_STREAM_STABLE_TAIL_MS", 120)
+            * DEFAULT_QWEN3_TTS_SAMPLE_RATE_HZ as usize
+            / 1000;
+        let vocoder_mode = StreamingVocoderMode::from_env()?;
+        let overlap_samples = env_usize("VONA_MLX_QWEN3_TTS_STREAM_OVERLAP_MS", 40)
+            * DEFAULT_QWEN3_TTS_SAMPLE_RATE_HZ as usize
+            / 1000;
+        let window_frames = env_usize("VONA_MLX_QWEN3_TTS_STREAM_WINDOW_FRAMES", 160)
+            .max(chunk_audio_tokens)
+            .max(self.speech_config.min_audio_tokens);
+        let samples_per_codec_frame =
+            env_usize("VONA_MLX_QWEN3_TTS_SAMPLES_PER_CODEC_FRAME", 2000).max(1);
+        let mut vocoder_stream =
+            RollingVocoderStream::new(overlap_samples, samples_per_codec_frame);
+        let mut cached_vocoder_stream =
+            CachedVocoderStream::new(overlap_samples, samples_per_codec_frame);
+        let mut prefix_emitted_samples = 0usize;
+        let mut next_emit_frame_count = self.speech_config.min_audio_tokens.max(chunk_audio_tokens);
+
+        for _ in 0..self.speech_config.max_audio_tokens {
+            let hidden = self.forward_talker(&weights, &sequence)?;
+            let allow_eos = frames.len() >= self.speech_config.min_audio_tokens;
+            let frame = self.predict_codec_frame_from_hidden(
+                &weights,
+                &hidden,
+                allow_eos,
+                &mut rng,
+                &generated_main_codes,
+            )?;
+            if frame.first().copied() == Some(self.config.talker_config.codec_eos_token_id) {
+                break;
+            }
+            let next_text = if (frames.len() as i32) < trailing_text.shape()[1] {
+                trailing_text.index((.., frames.len() as i32..frames.len() as i32 + 1, ..))
+            } else {
+                tts_pad.clone()
+            };
+            let next_input = self.codec_frame_input(&weights, &frame, &next_text)?;
+            if let Some(code) = frame.first().copied() {
+                generated_main_codes.insert(code);
+            }
+            frames.push(frame);
+
+            if frames.len() >= next_emit_frame_count {
+                match vocoder_mode {
+                    StreamingVocoderMode::PrefixOracle => self.emit_stable_vocoder_prefix(
+                        &frames,
+                        stable_tail_samples,
+                        &mut prefix_emitted_samples,
+                        emit,
+                    )?,
+                    StreamingVocoderMode::RollingOverlap => self.emit_rolling_vocoder_window(
+                        &frames,
+                        window_frames,
+                        stable_tail_samples,
+                        false,
+                        &mut vocoder_stream,
+                        emit,
+                    )?,
+                    StreamingVocoderMode::CachedState => {
+                        require_experimental_cached_state()?;
+                        self.emit_cached_vocoder_window(
+                            &frames,
+                            window_frames,
+                            stable_tail_samples,
+                            false,
+                            &mut cached_vocoder_stream,
+                            emit,
+                        )?
+                    }
+                }
+                next_emit_frame_count = next_emit_frame_count.saturating_add(chunk_audio_tokens);
+            }
+
+            sequence = mlx_rs::ops::concatenate_axis(&[&sequence, &next_input], 1)
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        }
+
+        if std::env::var_os("VONA_QWEN3_TTS_DEBUG_CODES").is_some() {
+            eprintln!(
+                "qwen3_tts stream codec_frames={} first_frames={:?}",
+                frames.len(),
+                frames.iter().take(8).collect::<Vec<_>>()
+            );
+        }
+
+        match vocoder_mode {
+            StreamingVocoderMode::PrefixOracle => {
+                self.emit_vocoder_remainder(&frames, &mut prefix_emitted_samples, emit)?
+            }
+            StreamingVocoderMode::RollingOverlap => self.emit_rolling_vocoder_window(
+                &frames,
+                window_frames,
+                0,
+                true,
+                &mut vocoder_stream,
+                emit,
+            )?,
+            StreamingVocoderMode::CachedState => {
+                require_experimental_cached_state()?;
+                self.emit_cached_vocoder_window(
+                    &frames,
+                    window_frames,
+                    0,
+                    true,
+                    &mut cached_vocoder_stream,
+                    emit,
+                )?
+            }
+        }
+        Ok(frames)
+    }
+
+    fn synthesize_codec_frames(
+        &self,
+        codec_frames: &[Vec<u32>],
+    ) -> Result<MlxArray, MlxAudioError> {
+        if codec_frames.is_empty() {
+            return Err(MlxAudioError::Inference(
+                "Qwen3 TTS generated no codec frames before EOS".to_string(),
+            ));
+        }
+        if self.vocoder_weight_count() == 0 {
+            return Err(MlxAudioError::ModelUnavailable(format!(
+                "missing Qwen3 TTS vocoder weights at {}/speech_tokenizer/model.safetensors",
+                self.files.model_dir.display()
+            )));
+        }
+
+        let latents = self.decode_vocoder_latents(codec_frames)?;
+        let audio = self.run_vocoder_frontend(&latents)?;
+        let lower = mlx_rs::Array::from_slice(&[-1.0_f32], &[1]);
+        let upper = mlx_rs::Array::from_slice(&[1.0_f32], &[1]);
+        let audio = mlx_rs::ops::maximum(&audio, &lower)
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        mlx_rs::ops::minimum(&audio, &upper)
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))
+    }
+
+    fn emit_rolling_vocoder_window(
+        &self,
+        codec_frames: &[Vec<u32>],
+        window_frames: usize,
+        stable_tail_samples: usize,
+        is_final: bool,
+        stream: &mut RollingVocoderStream,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<(), MlxAudioError> {
+        if codec_frames.is_empty() {
+            return Ok(());
+        }
+        let window_start_frame = codec_frames.len().saturating_sub(window_frames.max(1));
+        let audio = self.synthesize_codec_frames(&codec_frames[window_start_frame..])?;
+        audio
+            .eval()
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        stream.emit_window(
+            window_start_frame,
+            audio.as_slice::<f32>(),
+            stable_tail_samples,
+            is_final,
+            emit,
+        )
+    }
+
+    fn emit_cached_vocoder_window(
+        &self,
+        codec_frames: &[Vec<u32>],
+        window_frames: usize,
+        stable_tail_samples: usize,
+        is_final: bool,
+        stream: &mut CachedVocoderStream,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<(), MlxAudioError> {
+        if codec_frames.is_empty() {
+            return Ok(());
+        }
+        let weights = self.vocoder_weights.lock().map_err(|_| {
+            MlxAudioError::Runtime("Qwen3 vocoder weight lock is poisoned".to_string())
+        })?;
+        let weights = weights.as_ref().ok_or_else(|| {
+            MlxAudioError::ModelUnavailable(format!(
+                "missing Qwen3 TTS vocoder weights at {}/speech_tokenizer/model.safetensors",
+                self.files.model_dir.display()
+            ))
+        })?;
+        let weights = MlxWeightView::new(weights);
+        stream.emit_window(
+            self,
+            &weights,
+            codec_frames,
+            window_frames,
+            stable_tail_samples,
+            is_final,
+            emit,
+        )
+    }
+
+    fn emit_stable_vocoder_prefix(
+        &self,
+        codec_frames: &[Vec<u32>],
+        stable_tail_samples: usize,
+        emitted_samples: &mut usize,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<(), MlxAudioError> {
+        let audio = self.synthesize_codec_frames(codec_frames)?;
+        audio
+            .eval()
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let samples = audio.as_slice::<f32>();
+        let stable_len = samples.len().saturating_sub(stable_tail_samples);
+        if stable_len > *emitted_samples {
+            emit(samples[*emitted_samples..stable_len].to_vec())?;
+            *emitted_samples = stable_len;
+        }
+        Ok(())
+    }
+
+    fn emit_vocoder_remainder(
+        &self,
+        codec_frames: &[Vec<u32>],
+        emitted_samples: &mut usize,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<(), MlxAudioError> {
+        let audio = self.synthesize_codec_frames(codec_frames)?;
+        audio
+            .eval()
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let samples = audio.as_slice::<f32>();
+        if samples.len() > *emitted_samples {
+            emit(samples[*emitted_samples..].to_vec())?;
+            *emitted_samples = samples.len();
+        }
+        Ok(())
+    }
+
     fn predict_codec_frame_from_hidden(
         &self,
         weights: &MlxWeightView<'_>,
@@ -1260,6 +1514,15 @@ impl Qwen3TtsSpeechModel {
         })?;
         let weights = MlxWeightView::new(weights);
 
+        let hidden = self.run_vocoder_hidden_frontend(&weights, latents)?;
+        self.vocoder_decode_waveform(&weights, &hidden)
+    }
+
+    fn run_vocoder_hidden_frontend(
+        &self,
+        weights: &MlxWeightView<'_>,
+        latents: &MlxArray,
+    ) -> Result<MlxArray, MlxAudioError> {
         let pre_conv = self.causal_conv1d_ncl(
             latents,
             weights
@@ -1270,8 +1533,28 @@ impl Qwen3TtsSpeechModel {
             1,
             1,
         )?;
-        let hidden = self.vocoder_pre_transformer(&weights, &pre_conv)?;
-        self.vocoder_decode_waveform(&weights, &hidden)
+        self.vocoder_pre_transformer(weights, &pre_conv)
+    }
+
+    #[allow(dead_code)]
+    fn run_vocoder_frontend_incremental(
+        &self,
+        weights: &MlxWeightView<'_>,
+        latents: &MlxArray,
+        state: &mut CachedVocoderFrontendState,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let pre_conv = self.causal_conv1d_cached_ncl(
+            latents,
+            weights
+                .get("decoder.pre_conv.conv.weight")
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional("decoder.pre_conv.conv.bias"),
+            1,
+            1,
+            1,
+            &mut state.pre_conv_tail,
+        )?;
+        self.vocoder_pre_transformer_incremental(weights, &pre_conv, &mut state.transformer)
     }
 
     fn vocoder_pre_transformer(
@@ -1324,6 +1607,60 @@ impl Qwen3TtsSpeechModel {
         Ok(hidden)
     }
 
+    #[allow(dead_code)]
+    fn vocoder_pre_transformer_incremental(
+        &self,
+        weights: &MlxWeightView<'_>,
+        hidden_ncl: &MlxArray,
+        state: &mut CachedVocoderTransformerState,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let hidden = hidden_ncl
+            .transpose_axes(&[0, 2, 1])
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = linear(
+            &hidden,
+            weights
+                .get("decoder.pre_transformer.input_proj.weight")
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional("decoder.pre_transformer.input_proj.bias"),
+        )
+        .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+
+        let layer_count = count_indexed_layers(weights, "decoder.pre_transformer.layers.");
+        state.ensure_layer_count(layer_count);
+        let mut hidden = hidden;
+        for layer in 0..layer_count {
+            hidden = self.vocoder_transformer_layer_incremental(
+                weights,
+                &format!("decoder.pre_transformer.layers.{layer}"),
+                &hidden,
+                &mut state.layers[layer],
+            )?;
+        }
+        hidden = self.rms_norm_eps(
+            &hidden,
+            weights
+                .get("decoder.pre_transformer.norm.weight")
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            self.config.vocoder_config.norm_eps as f32,
+        )?;
+        let hidden = linear(
+            &hidden,
+            weights
+                .get("decoder.pre_transformer.output_proj.weight")
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional("decoder.pre_transformer.output_proj.bias"),
+        )
+        .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = hidden
+            .transpose_axes(&[0, 2, 1])
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        hidden
+            .eval()
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        Ok(hidden)
+    }
+
     fn vocoder_transformer_layer(
         &self,
         weights: &MlxWeightView<'_>,
@@ -1339,6 +1676,47 @@ impl Qwen3TtsSpeechModel {
             self.config.vocoder_config.norm_eps as f32,
         )?;
         let attention = self.vocoder_attention(weights, prefix, &norm)?;
+        let attention_scale = weights
+            .get(&format!("{prefix}.self_attn_layer_scale.scale"))
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = residual + attention * attention_scale;
+
+        let residual = hidden.clone();
+        let norm = self.rms_norm_eps(
+            &hidden,
+            weights
+                .get(&format!("{prefix}.post_attention_layernorm.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            self.config.vocoder_config.norm_eps as f32,
+        )?;
+        let gate = self.linear_key(weights, &format!("{prefix}.mlp.gate_proj"), &norm)?;
+        let gate =
+            mlx_rs::nn::silu(&gate).map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let up = self.linear_key(weights, &format!("{prefix}.mlp.up_proj"), &norm)?;
+        let down = self.linear_key(weights, &format!("{prefix}.mlp.down_proj"), &(gate * up))?;
+        let mlp_scale = weights
+            .get(&format!("{prefix}.mlp_layer_scale.scale"))
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        Ok(residual + down * mlp_scale)
+    }
+
+    #[allow(dead_code)]
+    fn vocoder_transformer_layer_incremental(
+        &self,
+        weights: &MlxWeightView<'_>,
+        prefix: &str,
+        hidden: &MlxArray,
+        state: &mut CachedVocoderLayerState,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let residual = hidden.clone();
+        let norm = self.rms_norm_eps(
+            hidden,
+            weights
+                .get(&format!("{prefix}.input_layernorm.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            self.config.vocoder_config.norm_eps as f32,
+        )?;
+        let attention = self.vocoder_attention_incremental(weights, prefix, &norm, state)?;
         let attention_scale = weights
             .get(&format!("{prefix}.self_attn_layer_scale.scale"))
             .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
@@ -1445,6 +1823,105 @@ impl Qwen3TtsSpeechModel {
         self.linear_key(weights, &format!("{prefix}.self_attn.o_proj"), &attention)
     }
 
+    #[allow(dead_code)]
+    fn vocoder_attention_incremental(
+        &self,
+        weights: &MlxWeightView<'_>,
+        prefix: &str,
+        hidden: &MlxArray,
+        state: &mut CachedVocoderLayerState,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let q = self.linear_key(weights, &format!("{prefix}.self_attn.q_proj"), hidden)?;
+        let k = self.linear_key(weights, &format!("{prefix}.self_attn.k_proj"), hidden)?;
+        let v = self.linear_key(weights, &format!("{prefix}.self_attn.v_proj"), hidden)?;
+        let batch = q.shape()[0];
+        let seq_len = q.shape()[1];
+        let q_dim = q.shape()[2];
+        let head_count = (self.config.vocoder_config.num_attention_heads as i32).max(1);
+        let head_dim = (q_dim / head_count).max(1);
+        let kv_head_count = (k.shape()[2] / head_dim).max(1);
+        let past_tokens = state.tokens;
+        let rope_offset = i32::try_from(past_tokens).unwrap_or(i32::MAX);
+        let q = q
+            .reshape(&[batch, seq_len, head_count, head_dim])
+            .and_then(|array| {
+                self.apply_attention_norm(
+                    weights,
+                    &format!("{prefix}.self_attn.q_norm.weight"),
+                    &array,
+                    self.config.vocoder_config.norm_eps as f32,
+                )
+            })
+            .and_then(|array| array.transpose_axes(&[0, 2, 1, 3]))
+            .and_then(|array| {
+                mlx_rs::fast::rope(
+                    array,
+                    head_dim,
+                    false,
+                    self.config.vocoder_config.rope_theta as f32,
+                    1.0,
+                    rope_offset,
+                    None,
+                )
+            })
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let k = k
+            .reshape(&[batch, seq_len, kv_head_count, head_dim])
+            .and_then(|array| {
+                self.apply_attention_norm(
+                    weights,
+                    &format!("{prefix}.self_attn.k_norm.weight"),
+                    &array,
+                    self.config.vocoder_config.norm_eps as f32,
+                )
+            })
+            .and_then(|array| array.transpose_axes(&[0, 2, 1, 3]))
+            .and_then(|array| {
+                mlx_rs::fast::rope(
+                    array,
+                    head_dim,
+                    false,
+                    self.config.vocoder_config.rope_theta as f32,
+                    1.0,
+                    rope_offset,
+                    None,
+                )
+            })
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let v = v
+            .reshape(&[batch, seq_len, kv_head_count, head_dim])
+            .and_then(|array| array.transpose_axes(&[0, 2, 1, 3]))
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let (k, v) = repeat_kv_heads(k, v, head_count, kv_head_count)?;
+        state.key = Some(append_cached_axis(state.key.take(), k, 2)?);
+        state.value = Some(append_cached_axis(state.value.take(), v, 2)?);
+        state.tokens = state.tokens.saturating_add(seq_len as usize);
+
+        let key = state
+            .key
+            .as_ref()
+            .ok_or_else(|| MlxAudioError::Runtime("missing cached vocoder key".to_string()))?;
+        let value = state
+            .value
+            .as_ref()
+            .ok_or_else(|| MlxAudioError::Runtime("missing cached vocoder value".to_string()))?;
+        let mask =
+            offset_causal_attention_mask(seq_len as usize, key.shape()[2] as usize, past_tokens);
+        let attention = mlx_rs::fast::scaled_dot_product_attention(
+            &q,
+            key,
+            value,
+            1.0 / (head_dim as f32).sqrt(),
+            &mask,
+        )
+        .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let attention = attention
+            .transpose_axes(&[0, 2, 1, 3])
+            .and_then(|array| array.reshape(&[batch, seq_len, q_dim]))
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        self.linear_key(weights, &format!("{prefix}.self_attn.o_proj"), &attention)
+    }
+
     fn causal_conv1d_ncl(
         &self,
         input_ncl: &MlxArray,
@@ -1511,6 +1988,88 @@ impl Qwen3TtsSpeechModel {
         output
             .transpose_axes(&[0, 2, 1])
             .map_err(|error| MlxAudioError::Inference(error.to_string()))
+    }
+
+    fn causal_conv1d_cached_ncl(
+        &self,
+        input_ncl: &MlxArray,
+        weight_ock: &MlxArray,
+        bias: Option<&MlxArray>,
+        stride: i32,
+        dilation: i32,
+        groups: i32,
+        tail: &mut Option<MlxArray>,
+    ) -> Result<MlxArray, MlxAudioError> {
+        if stride != 1 {
+            return Err(MlxAudioError::Runtime(format!(
+                "cached causal conv currently expects stride=1, got stride={stride}"
+            )));
+        }
+        let input_len = input_ncl.shape()[2];
+        let input_with_tail = if let Some(previous) = tail.as_ref() {
+            mlx_rs::ops::concatenate_axis(&[previous, input_ncl], 2)
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?
+        } else {
+            input_ncl.clone()
+        };
+        let output =
+            self.causal_conv1d_ncl(&input_with_tail, weight_ock, bias, stride, dilation, groups)?;
+        let output_len = output.shape()[2];
+        let new_start = output_len.saturating_sub(input_len);
+        let new_output = output.index((.., .., new_start..output_len));
+
+        let kernel = weight_ock.shape()[2];
+        let effective_kernel = (kernel - 1) * dilation + 1;
+        let tail_len = (effective_kernel - 1).max(0);
+        if tail_len > 0 {
+            let total_len = input_with_tail.shape()[2];
+            let tail_start = total_len.saturating_sub(tail_len);
+            *tail = Some(input_with_tail.index((.., .., tail_start..total_len)));
+        } else {
+            *tail = None;
+        }
+        Ok(new_output)
+    }
+
+    fn causal_transpose_conv1d_cached_ncl(
+        &self,
+        input_ncl: &MlxArray,
+        weight_iok: &MlxArray,
+        bias: Option<&MlxArray>,
+        stride: i32,
+        is_final: bool,
+        tail: &mut Option<MlxArray>,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let input_nlc = input_ncl
+            .transpose_axes(&[0, 2, 1])
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let weight_oki = weight_iok
+            .transpose_axes(&[1, 2, 0])
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let mut output_nlc =
+            mlx_rs::ops::conv_transpose1d(&input_nlc, &weight_oki, stride, 0, 1, 0, 1)
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        if let Some(bias) = bias {
+            output_nlc += bias;
+        }
+        let mut output_ncl = output_nlc
+            .transpose_axes(&[0, 2, 1])
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        if let Some(previous_tail) = tail.take() {
+            output_ncl = add_cached_prefix_tail(output_ncl, previous_tail)?;
+        }
+
+        let right_pad = (weight_iok.shape()[2] - stride).max(0);
+        let output_len = output_ncl.shape()[2];
+        if right_pad > 0 && output_len > right_pad {
+            let tail_start = output_len - right_pad;
+            let next_tail = output_ncl.index((.., .., tail_start..output_len));
+            output_ncl = output_ncl.index((.., .., 0..tail_start));
+            if !is_final {
+                *tail = Some(next_tail);
+            }
+        }
+        Ok(output_ncl)
     }
 
     fn causal_transpose_conv1d_ncl(
@@ -1618,6 +2177,100 @@ impl Qwen3TtsSpeechModel {
         Ok(hidden)
     }
 
+    fn vocoder_decode_waveform_incremental(
+        &self,
+        weights: &MlxWeightView<'_>,
+        hidden: &MlxArray,
+        state: &mut CachedWaveformDecoderState,
+        is_final: bool,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let mut hidden = hidden.clone();
+        let upsample_count = count_upsample_blocks(weights);
+        state.ensure_upsample_count(upsample_count);
+        for index in 0..upsample_count {
+            let trans_weight = weights
+                .get(&format!("decoder.upsample.{index}.0.conv.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+            hidden = self.causal_transpose_conv1d_cached_ncl(
+                &hidden,
+                trans_weight,
+                weights.optional(&format!("decoder.upsample.{index}.0.conv.bias")),
+                inferred_transpose_stride(
+                    trans_weight,
+                    self.config.vocoder_config.transpose_stride_divisor,
+                ),
+                is_final,
+                &mut state.upsample[index].transpose_tail,
+            )?;
+            hidden = self.convnext_block_cached(
+                weights,
+                &format!("decoder.upsample.{index}.1."),
+                &hidden,
+                &mut state.upsample[index].convnext,
+            )?;
+        }
+
+        hidden = self.causal_conv1d_cached_ncl(
+            &hidden,
+            weights
+                .get("decoder.decoder.0.conv.weight")
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional("decoder.decoder.0.conv.bias"),
+            1,
+            1,
+            1,
+            &mut state.initial_decoder_conv_tail,
+        )?;
+
+        let decoder_block_count = count_decoder_blocks(weights);
+        state.ensure_decoder_block_count(decoder_block_count);
+        for block in 0..decoder_block_count {
+            hidden = self.decoder_block_cached(
+                weights,
+                &format!("decoder.decoder.{}.", block + 1),
+                &hidden,
+                is_final,
+                &mut state.decoder_blocks[block],
+            )?;
+        }
+
+        let final_snake_index = decoder_block_count + 1;
+        hidden = self.snake_beta(
+            &hidden,
+            weights
+                .get(&format!("decoder.decoder.{final_snake_index}.alpha"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights
+                .get(&format!("decoder.decoder.{final_snake_index}.beta"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+        )?;
+        let final_conv_index = final_snake_index + 1;
+        hidden = self.causal_conv1d_cached_ncl(
+            &hidden,
+            weights
+                .get(&format!("decoder.decoder.{final_conv_index}.conv.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional(&format!("decoder.decoder.{final_conv_index}.conv.bias")),
+            1,
+            1,
+            1,
+            &mut state.final_conv_tail,
+        )?;
+        let hidden = mlx_rs::ops::clip(&hidden, (-1.0f32, 1.0f32))
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = if hidden.shape().get(1).copied() == Some(1) {
+            hidden
+                .reshape(&[hidden.shape()[0], hidden.shape()[2]])
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?
+        } else {
+            hidden
+        };
+        hidden
+            .eval()
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        Ok(hidden)
+    }
+
     fn convnext_block(
         &self,
         weights: &MlxWeightView<'_>,
@@ -1634,6 +2287,70 @@ impl Qwen3TtsSpeechModel {
             1,
             1,
             input.shape()[1],
+        )?;
+        let hidden = hidden
+            .transpose_axes(&[0, 2, 1])
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = mlx_rs::fast::layer_norm(
+            &hidden,
+            Some(
+                weights
+                    .get(&format!("{prefix}norm.weight"))
+                    .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            ),
+            Some(
+                weights
+                    .get(&format!("{prefix}norm.bias"))
+                    .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            ),
+            self.config.vocoder_config.convnext_norm_eps as f32,
+        )
+        .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = linear(
+            &hidden,
+            weights
+                .get(&format!("{prefix}pwconv1.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional(&format!("{prefix}pwconv1.bias")),
+        )
+        .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = gelu(&hidden).map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = linear(
+            &hidden,
+            weights
+                .get(&format!("{prefix}pwconv2.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional(&format!("{prefix}pwconv2.bias")),
+        )
+        .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = hidden
+            * weights
+                .get(&format!("{prefix}gamma"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        let hidden = hidden
+            .transpose_axes(&[0, 2, 1])
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        Ok(residual + hidden)
+    }
+
+    fn convnext_block_cached(
+        &self,
+        weights: &MlxWeightView<'_>,
+        prefix: &str,
+        input: &MlxArray,
+        state: &mut CachedConvNextBlockState,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let residual = input.clone();
+        let hidden = self.causal_conv1d_cached_ncl(
+            input,
+            weights
+                .get(&format!("{prefix}dwconv.conv.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional(&format!("{prefix}dwconv.conv.bias")),
+            1,
+            1,
+            input.shape()[1],
+            &mut state.dwconv_tail,
         )?;
         let hidden = hidden
             .transpose_axes(&[0, 2, 1])
@@ -1718,6 +2435,49 @@ impl Qwen3TtsSpeechModel {
         Ok(hidden)
     }
 
+    fn decoder_block_cached(
+        &self,
+        weights: &MlxWeightView<'_>,
+        prefix: &str,
+        input: &MlxArray,
+        is_final: bool,
+        state: &mut CachedDecoderBlockState,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let mut hidden = self.snake_beta(
+            input,
+            weights
+                .get(&format!("{prefix}block.0.alpha"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights
+                .get(&format!("{prefix}block.0.beta"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+        )?;
+        let trans_weight = weights
+            .get(&format!("{prefix}block.1.conv.weight"))
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+        hidden = self.causal_transpose_conv1d_cached_ncl(
+            &hidden,
+            trans_weight,
+            weights.optional(&format!("{prefix}block.1.conv.bias")),
+            inferred_transpose_stride(
+                trans_weight,
+                self.config.vocoder_config.transpose_stride_divisor,
+            ),
+            is_final,
+            &mut state.transpose_tail,
+        )?;
+        for (unit, dilation) in [1, 3, 9].into_iter().enumerate() {
+            hidden = self.decoder_residual_unit_cached(
+                weights,
+                &format!("{prefix}block.{}.", unit + 2),
+                &hidden,
+                dilation,
+                &mut state.residual_units[unit],
+            )?;
+        }
+        Ok(hidden)
+    }
+
     fn decoder_residual_unit(
         &self,
         weights: &MlxWeightView<'_>,
@@ -1763,6 +2523,58 @@ impl Qwen3TtsSpeechModel {
             1,
             1,
             1,
+        )?;
+        Ok(residual + hidden)
+    }
+
+    fn decoder_residual_unit_cached(
+        &self,
+        weights: &MlxWeightView<'_>,
+        prefix: &str,
+        input: &MlxArray,
+        dilation: i32,
+        state: &mut CachedDecoderResidualUnitState,
+    ) -> Result<MlxArray, MlxAudioError> {
+        let residual = input.clone();
+        let hidden = self.snake_beta(
+            input,
+            weights
+                .get(&format!("{prefix}act1.alpha"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights
+                .get(&format!("{prefix}act1.beta"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+        )?;
+        let hidden = self.causal_conv1d_cached_ncl(
+            &hidden,
+            weights
+                .get(&format!("{prefix}conv1.conv.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional(&format!("{prefix}conv1.conv.bias")),
+            1,
+            dilation,
+            1,
+            &mut state.conv1_tail,
+        )?;
+        let hidden = self.snake_beta(
+            &hidden,
+            weights
+                .get(&format!("{prefix}act2.alpha"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights
+                .get(&format!("{prefix}act2.beta"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+        )?;
+        let hidden = self.causal_conv1d_cached_ncl(
+            &hidden,
+            weights
+                .get(&format!("{prefix}conv2.conv.weight"))
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?,
+            weights.optional(&format!("{prefix}conv2.conv.bias")),
+            1,
+            1,
+            1,
+            &mut state.conv2_tail,
         )?;
         Ok(residual + hidden)
     }
@@ -2021,6 +2833,69 @@ fn inferred_transpose_stride(weight_iok: &MlxArray, divisor: i32) -> i32 {
 }
 
 #[cfg(feature = "native-mlx")]
+#[allow(dead_code)]
+fn append_cached_axis(
+    previous: Option<MlxArray>,
+    next: MlxArray,
+    axis: i32,
+) -> Result<MlxArray, MlxAudioError> {
+    if let Some(previous) = previous {
+        mlx_rs::ops::concatenate_axis(&[&previous, &next], axis)
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))
+    } else {
+        Ok(next)
+    }
+}
+
+#[cfg(feature = "native-mlx")]
+fn add_cached_prefix_tail(
+    output_ncl: MlxArray,
+    tail_ncl: MlxArray,
+) -> Result<MlxArray, MlxAudioError> {
+    let output_len = output_ncl.shape()[2];
+    let tail_len = tail_ncl.shape()[2].min(output_len);
+    if tail_len == 0 {
+        return Ok(output_ncl);
+    }
+    let prefix = output_ncl.index((.., .., 0..tail_len)) + tail_ncl.index((.., .., 0..tail_len));
+    if output_len == tail_len {
+        Ok(prefix)
+    } else {
+        let suffix = output_ncl.index((.., .., tail_len..output_len));
+        mlx_rs::ops::concatenate_axis(&[&prefix, &suffix], 2)
+            .map_err(|error| MlxAudioError::Inference(error.to_string()))
+    }
+}
+
+#[cfg(feature = "native-mlx")]
+fn require_experimental_cached_state() -> Result<(), MlxAudioError> {
+    if std::env::var_os("VONA_MLX_QWEN3_TTS_ENABLE_EXPERIMENTAL_CACHED_STATE").is_some() {
+        Ok(())
+    } else {
+        Err(MlxAudioError::Runtime(
+            "Qwen3 cached-state vocoder is implemented but still experimental; set VONA_MLX_QWEN3_TTS_ENABLE_EXPERIMENTAL_CACHED_STATE=1 to run the currently unpromoted cache path, or use VONA_MLX_QWEN3_TTS_STREAM_VOCODER_MODE=rolling".to_string(),
+        ))
+    }
+}
+
+#[cfg(feature = "native-mlx")]
+#[allow(dead_code)]
+fn offset_causal_attention_mask(query_len: usize, key_len: usize, past_tokens: usize) -> MlxArray {
+    let mut values = Vec::with_capacity(query_len.saturating_mul(key_len));
+    for query in 0..query_len {
+        let allowed_until = past_tokens.saturating_add(query);
+        for key in 0..key_len {
+            values.push(if key <= allowed_until {
+                0.0_f32
+            } else {
+                f32::NEG_INFINITY
+            });
+        }
+    }
+    MlxArray::from_slice(&values, &[query_len as i32, key_len as i32])
+}
+
+#[cfg(feature = "native-mlx")]
 fn repeat_kv_heads(
     key: MlxArray,
     value: MlxArray,
@@ -2128,6 +3003,310 @@ impl XorShift64 {
 }
 
 #[cfg(feature = "native-mlx")]
+struct RollingVocoderStream {
+    committed_global_samples: usize,
+    pending_tail: Vec<f32>,
+    overlap_samples: usize,
+    samples_per_codec_frame: usize,
+}
+
+#[cfg(feature = "native-mlx")]
+struct CachedVocoderStream {
+    processed_frames: usize,
+    waveform_decoder: CachedWaveformDecoderState,
+    audio: CachedAudioEmitter,
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Default)]
+struct CachedWaveformDecoderState {
+    upsample: Vec<CachedUpsampleBlockState>,
+    initial_decoder_conv_tail: Option<MlxArray>,
+    decoder_blocks: Vec<CachedDecoderBlockState>,
+    final_conv_tail: Option<MlxArray>,
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Default)]
+struct CachedUpsampleBlockState {
+    transpose_tail: Option<MlxArray>,
+    convnext: CachedConvNextBlockState,
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Default)]
+struct CachedConvNextBlockState {
+    dwconv_tail: Option<MlxArray>,
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Default)]
+struct CachedDecoderBlockState {
+    transpose_tail: Option<MlxArray>,
+    residual_units: [CachedDecoderResidualUnitState; 3],
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Default)]
+struct CachedDecoderResidualUnitState {
+    conv1_tail: Option<MlxArray>,
+    conv2_tail: Option<MlxArray>,
+}
+
+#[cfg(feature = "native-mlx")]
+struct CachedAudioEmitter {
+    pending_tail: Vec<f32>,
+    overlap_samples: usize,
+    samples_per_codec_frame: usize,
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Default)]
+#[allow(dead_code)]
+struct CachedVocoderFrontendState {
+    pre_conv_tail: Option<MlxArray>,
+    transformer: CachedVocoderTransformerState,
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Default)]
+#[allow(dead_code)]
+struct CachedVocoderTransformerState {
+    layers: Vec<CachedVocoderLayerState>,
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Default)]
+#[allow(dead_code)]
+struct CachedVocoderLayerState {
+    key: Option<MlxArray>,
+    value: Option<MlxArray>,
+    tokens: usize,
+}
+
+#[cfg(feature = "native-mlx")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StreamingVocoderMode {
+    PrefixOracle,
+    RollingOverlap,
+    CachedState,
+}
+
+#[cfg(feature = "native-mlx")]
+impl StreamingVocoderMode {
+    fn from_env() -> Result<Self, MlxAudioError> {
+        let raw = std::env::var("VONA_MLX_QWEN3_TTS_STREAM_VOCODER_MODE")
+            .unwrap_or_else(|_| "rolling".to_string())
+            .trim()
+            .to_ascii_lowercase();
+        match raw.as_str() {
+            "prefix" | "oracle" | "full-prefix" => Ok(Self::PrefixOracle),
+            "rolling" | "rolling-overlap" | "overlap" => Ok(Self::RollingOverlap),
+            "cached" | "cached-state" | "kv-cache" => Ok(Self::CachedState),
+            _ => Err(MlxAudioError::InvalidInput(format!(
+                "unknown Qwen3 streaming vocoder mode '{raw}'; expected prefix, rolling, or cached"
+            ))),
+        }
+    }
+}
+
+#[cfg(feature = "native-mlx")]
+#[allow(dead_code)]
+impl CachedVocoderTransformerState {
+    fn ensure_layer_count(&mut self, layer_count: usize) {
+        while self.layers.len() < layer_count {
+            self.layers.push(CachedVocoderLayerState::default());
+        }
+        self.layers.truncate(layer_count);
+    }
+}
+
+#[cfg(feature = "native-mlx")]
+impl CachedWaveformDecoderState {
+    fn ensure_upsample_count(&mut self, count: usize) {
+        while self.upsample.len() < count {
+            self.upsample.push(CachedUpsampleBlockState::default());
+        }
+        self.upsample.truncate(count);
+    }
+
+    fn ensure_decoder_block_count(&mut self, count: usize) {
+        while self.decoder_blocks.len() < count {
+            self.decoder_blocks.push(CachedDecoderBlockState::default());
+        }
+        self.decoder_blocks.truncate(count);
+    }
+}
+
+#[cfg(feature = "native-mlx")]
+impl CachedAudioEmitter {
+    fn new(overlap_samples: usize, samples_per_codec_frame: usize) -> Self {
+        Self {
+            pending_tail: Vec::new(),
+            overlap_samples,
+            samples_per_codec_frame,
+        }
+    }
+
+    fn emit_samples(
+        &mut self,
+        samples: &[f32],
+        stable_tail_samples: usize,
+        is_final: bool,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<(), MlxAudioError> {
+        let mut next = Vec::with_capacity(self.pending_tail.len() + samples.len());
+        next.extend_from_slice(&self.pending_tail);
+        next.extend_from_slice(samples);
+        self.pending_tail.clear();
+
+        let hold = if is_final {
+            0
+        } else {
+            stable_tail_samples
+                .max(self.overlap_samples)
+                .min(next.len())
+        };
+        let emit_len = next.len().saturating_sub(hold);
+        if emit_len > 0 {
+            emit(next[..emit_len].to_vec())?;
+        }
+        if hold > 0 {
+            self.pending_tail = next[emit_len..].to_vec();
+        }
+        let _ = self.samples_per_codec_frame;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "native-mlx")]
+impl CachedVocoderStream {
+    fn new(overlap_samples: usize, samples_per_codec_frame: usize) -> Self {
+        Self {
+            processed_frames: 0,
+            waveform_decoder: CachedWaveformDecoderState::default(),
+            audio: CachedAudioEmitter::new(overlap_samples, samples_per_codec_frame),
+        }
+    }
+
+    fn emit_window(
+        &mut self,
+        model: &Qwen3TtsSpeechModel,
+        weights: &MlxWeightView<'_>,
+        codec_frames: &[Vec<u32>],
+        window_frames: usize,
+        stable_tail_samples: usize,
+        is_final: bool,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<(), MlxAudioError> {
+        if codec_frames.len() > self.processed_frames {
+            let latents = model.decode_vocoder_latents(codec_frames)?;
+            let hidden_ncl = model.run_vocoder_hidden_frontend(weights, &latents)?;
+            let new_hidden = hidden_ncl.index((.., .., self.processed_frames as i32..));
+            let new_audio = model.vocoder_decode_waveform_incremental(
+                weights,
+                &new_hidden,
+                &mut self.waveform_decoder,
+                is_final,
+            )?;
+            new_audio
+                .eval()
+                .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
+            self.audio.emit_samples(
+                new_audio.as_slice::<f32>(),
+                stable_tail_samples,
+                is_final,
+                emit,
+            )?;
+            self.processed_frames = codec_frames.len();
+        } else if is_final {
+            self.audio
+                .emit_samples(&[], stable_tail_samples, true, emit)?;
+        }
+        let _ = window_frames;
+        Ok(())
+    }
+}
+
+#[cfg(feature = "native-mlx")]
+impl RollingVocoderStream {
+    fn new(overlap_samples: usize, samples_per_codec_frame: usize) -> Self {
+        Self {
+            committed_global_samples: 0,
+            pending_tail: Vec::new(),
+            overlap_samples,
+            samples_per_codec_frame,
+        }
+    }
+
+    fn emit_window(
+        &mut self,
+        window_start_frame: usize,
+        samples: &[f32],
+        stable_tail_samples: usize,
+        is_final: bool,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<(), MlxAudioError> {
+        if samples.is_empty() {
+            return Ok(());
+        }
+
+        let window_global_start = window_start_frame.saturating_mul(self.samples_per_codec_frame);
+        let available_len = if is_final {
+            samples.len()
+        } else {
+            samples.len().saturating_sub(stable_tail_samples)
+        };
+        let available_global_end = window_global_start.saturating_add(available_len);
+        if available_global_end <= self.committed_global_samples {
+            return Ok(());
+        }
+
+        let local_start = self
+            .committed_global_samples
+            .saturating_sub(window_global_start)
+            .min(available_len);
+        let mut next = samples[local_start..available_len].to_vec();
+        if next.is_empty() {
+            return Ok(());
+        }
+
+        if !self.pending_tail.is_empty() {
+            let crossfade_len = self.pending_tail.len().min(next.len());
+            let mut out = Vec::with_capacity(self.pending_tail.len() + next.len());
+            for index in 0..crossfade_len {
+                let t = (index + 1) as f32 / (crossfade_len + 1) as f32;
+                out.push(self.pending_tail[index] * (1.0 - t) + next[index] * t);
+            }
+            if self.pending_tail.len() > crossfade_len {
+                out.extend_from_slice(&self.pending_tail[crossfade_len..]);
+            }
+            if next.len() > crossfade_len {
+                out.extend_from_slice(&next[crossfade_len..]);
+            }
+            next = out;
+            self.pending_tail.clear();
+        }
+
+        let tail_len = if is_final {
+            0
+        } else {
+            self.overlap_samples.min(next.len())
+        };
+        let emit_len = next.len().saturating_sub(tail_len);
+        if emit_len > 0 {
+            emit(next[..emit_len].to_vec())?;
+            self.committed_global_samples = self.committed_global_samples.saturating_add(emit_len);
+        }
+        if tail_len > 0 {
+            self.pending_tail = next[emit_len..].to_vec();
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(feature = "native-mlx")]
 impl MlxSpeechModel for Qwen3TtsSpeechModel {
     fn transcribe(&self, _audio: &MlxArray, _sample_rate_hz: u32) -> Result<String, MlxAudioError> {
         Err(MlxAudioError::ModelUnavailable(
@@ -2166,26 +3345,57 @@ impl MlxSpeechModel for Qwen3TtsSpeechModel {
         })?;
         let (generation_prefix, trailing_text) = self.build_generation_inputs(&token_ids)?;
         let codec_frames = self.generate_codec_frames(&generation_prefix, &trailing_text)?;
+        self.synthesize_codec_frames(&codec_frames)
+    }
+
+    fn synthesize_streaming(
+        &self,
+        text: &str,
+        sample_rate_hz: u32,
+        chunk_audio_tokens: usize,
+        emit: &mut dyn FnMut(Vec<f32>) -> Result<(), MlxAudioError>,
+    ) -> Result<(), MlxAudioError> {
+        if sample_rate_hz != DEFAULT_QWEN3_TTS_SAMPLE_RATE_HZ {
+            return Err(MlxAudioError::InvalidInput(format!(
+                "Qwen3 TTS currently expects {DEFAULT_QWEN3_TTS_SAMPLE_RATE_HZ} Hz output, got {sample_rate_hz} Hz"
+            )));
+        }
+
+        let prompt = format!(
+            "<|im_start|>assistant\n{}<|im_end|>\n<|im_start|>assistant\n",
+            text.trim()
+        );
+        let token_ids = self
+            .tokenizer
+            .encode(prompt, false)
+            .map_err(|error| MlxAudioError::InvalidInput(error.to_string()))?
+            .get_ids()
+            .iter()
+            .map(|id| i32::try_from(*id).unwrap_or(i32::MAX))
+            .collect::<Vec<_>>();
+        if std::env::var_os("VONA_QWEN3_TTS_DEBUG_PROMPT").is_some() {
+            eprintln!(
+                "qwen3_tts stream prompt_tokens={} ids={:?}",
+                token_ids.len(),
+                token_ids
+            );
+        }
+        let _len = i32::try_from(token_ids.len()).map_err(|_| {
+            MlxAudioError::InvalidInput("tokenized prompt is too long for MLX shape".to_string())
+        })?;
+        let (generation_prefix, trailing_text) = self.build_generation_inputs(&token_ids)?;
+        let codec_frames = self.generate_codec_frames_streaming(
+            &generation_prefix,
+            &trailing_text,
+            chunk_audio_tokens,
+            emit,
+        )?;
         if codec_frames.is_empty() {
             return Err(MlxAudioError::Inference(
                 "Qwen3 TTS generated no codec frames before EOS".to_string(),
             ));
         }
-        if self.vocoder_weight_count() == 0 {
-            return Err(MlxAudioError::ModelUnavailable(format!(
-                "missing Qwen3 TTS vocoder weights at {}/speech_tokenizer/model.safetensors",
-                self.files.model_dir.display()
-            )));
-        }
-
-        let latents = self.decode_vocoder_latents(&codec_frames)?;
-        let audio = self.run_vocoder_frontend(&latents)?;
-        let lower = mlx_rs::Array::from_slice(&[-1.0_f32], &[1]);
-        let upper = mlx_rs::Array::from_slice(&[1.0_f32], &[1]);
-        let audio = mlx_rs::ops::maximum(&audio, &lower)
-            .map_err(|error| MlxAudioError::Inference(error.to_string()))?;
-        mlx_rs::ops::minimum(&audio, &upper)
-            .map_err(|error| MlxAudioError::Inference(error.to_string()))
+        Ok(())
     }
 }
 

@@ -12,9 +12,12 @@ pub use backend::{BackendCapabilities, BackendError, BackendStep, SpeechToSpeech
 pub use backends::passthrough::PassthroughStsBackend;
 pub use generation::{
     AudioProcessingError, AudioStreamingTranscriber, AudioSynthesisConfig, AudioSynthesizer,
-    AudioTranscriber, StreamingTranscriptKind, StreamingTranscriptUpdate,
-    StreamingTranscriptionConfig, StreamingTranscriptionSession, TextGenerationError,
-    TextGenerationFrame, TextGenerationInput, TextGenerator, TokenStream,
+    AudioTranscriber, CachedAudioClip, PolicyAudioSynthesizer, PolicyTextGenerator,
+    RealtimeTtsPolicy, StreamingTranscriptKind, StreamingTranscriptUpdate,
+    StreamingTranscriptionConfig, StreamingTranscriptionSession, TextBackendId,
+    TextBackendSelection, TextGenerationError, TextGenerationFrame, TextGenerationInput,
+    TextGenerator, TextRoutingPolicy, TextRoutingRequest, TextTurnKind, TokenStream,
+    TtsPolicyRequest, TtsProviderId, TtsProviderSelection, TtsTurnKind,
 };
 pub use realtime::{
     RealtimeLatencyMark, RealtimeLatencyStage, RealtimeVoiceBackend, RealtimeVoiceCapabilities,
@@ -31,6 +34,6 @@ pub use skills::{
 };
 pub use transport::{AudioTransport, TransportError};
 pub use types::{
-    AudioInputFrame, AudioOutputFrame, AuditEvent, AuditEventKind, ControlEvent,
-    ExternalContextEvent, SessionMetrics, SkillCall, SkillContext,
+    AudioFrameEncoding, AudioInputFrame, AudioOutputFrame, AuditEvent, AuditEventKind,
+    ControlEvent, EncodedAudioFrame, ExternalContextEvent, SessionMetrics, SkillCall, SkillContext,
 };

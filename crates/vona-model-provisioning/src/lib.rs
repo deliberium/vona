@@ -333,6 +333,34 @@ pub fn qwen3_tts_12hz_0_6b_base_bf16_manifest() -> ModelManifest {
     )
 }
 
+pub fn kokoro_82m_onnx_realtime_manifest() -> ModelManifest {
+    ModelManifest {
+        id: "onnx-community/Kokoro-82M-ONNX".to_string(),
+        provider: LocalModelProvider::ProviderManaged {
+            name: "kokoro-82m-onnx".to_string(),
+        },
+        artifacts: Vec::new(),
+    }
+}
+
+pub fn piper_low_power_tts_manifest() -> ModelManifest {
+    ModelManifest {
+        id: "piper/low-power-tts".to_string(),
+        provider: LocalModelProvider::ProviderManaged {
+            name: "piper".to_string(),
+        },
+        artifacts: Vec::new(),
+    }
+}
+
+pub fn realtime_tts_model_manifests() -> [ModelManifest; 3] {
+    [
+        kokoro_82m_onnx_realtime_manifest(),
+        piper_low_power_tts_manifest(),
+        qwen3_tts_12hz_0_6b_base_bf16_manifest(),
+    ]
+}
+
 pub fn mlx_speech_model_manifests() -> [ModelManifest; 2] {
     [
         distil_whisper_large_v3_manifest(),
@@ -504,6 +532,26 @@ mod tests {
             LocalModelProvider::ProviderManaged { .. }
         ));
         assert!(validate_manifest(&manifest).is_ok());
+    }
+
+    #[test]
+    fn realtime_tts_manifests_are_provider_managed_or_downloadable() {
+        let kokoro = kokoro_82m_onnx_realtime_manifest();
+        let piper = piper_low_power_tts_manifest();
+        assert!(matches!(
+            kokoro.provider,
+            LocalModelProvider::ProviderManaged { .. }
+        ));
+        assert!(matches!(
+            piper.provider,
+            LocalModelProvider::ProviderManaged { .. }
+        ));
+
+        let manifests = realtime_tts_model_manifests();
+        assert_eq!(manifests.len(), 3);
+        for manifest in manifests {
+            validate_manifest(&manifest).unwrap();
+        }
     }
 
     #[test]

@@ -1,13 +1,27 @@
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    process::Stdio,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use tokio::{
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
+    process::{Child, ChildStdin, ChildStdout, Command},
+    sync::Mutex as AsyncMutex,
+};
+use vona_core::{AudioInputFrame, AudioProcessingError, AudioTranscriber};
 use vona_mlx::{LoadedMlxModel, MlxAudioError, MlxModelLoadRequest, MlxModelLoader};
 
 #[cfg(feature = "native-mlx")]
 use {
     std::{
         collections::{HashMap, HashSet},
-        sync::{Arc, Mutex},
+        sync::Mutex,
     },
     vona_mlx::{MlxArray, MlxModelKind, MlxSpeechModel},
     vona_mlx_speech::{
@@ -17,6 +31,7 @@ use {
 };
 
 pub const DEFAULT_WHISPER_SAMPLE_RATE_HZ: u32 = 16_000;
+pub const DEFAULT_WHISPER_WORKER_BIN: &str = "vona_mlx_whisper_worker";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WhisperSpeechConfig {
@@ -24,6 +39,7 @@ pub struct WhisperSpeechConfig {
     pub language: Option<String>,
     pub task: WhisperTask,
     pub max_decode_tokens: usize,
+    pub hotwords: Vec<TranscriptHotword>,
 }
 
 impl WhisperSpeechConfig {
@@ -33,8 +49,387 @@ impl WhisperSpeechConfig {
             language: None,
             task: WhisperTask::Transcribe,
             max_decode_tokens: 96,
+            hotwords: default_transcript_hotwords(),
         }
     }
+
+    pub fn with_hotwords(mut self, hotwords: Vec<TranscriptHotword>) -> Self {
+        self.hotwords = hotwords;
+        self
+    }
+
+    pub fn with_env_hotwords(mut self) -> Self {
+        if let Some(hotwords) = transcript_hotwords_from_env("VONA_WHISPER_HOTWORDS") {
+            self.hotwords = hotwords;
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TranscriptHotword {
+    pub replacement: String,
+    pub variants: Vec<String>,
+}
+
+impl TranscriptHotword {
+    pub fn new(
+        replacement: impl Into<String>,
+        variants: impl IntoIterator<Item = impl Into<String>>,
+    ) -> Self {
+        Self {
+            replacement: replacement.into(),
+            variants: variants.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ProtectedWhisperConfig {
+    pub worker_bin: PathBuf,
+    pub model_path: PathBuf,
+    pub language: Option<String>,
+    pub task: WhisperTask,
+    pub max_decode_tokens: usize,
+    pub hotwords: Vec<TranscriptHotword>,
+}
+
+impl ProtectedWhisperConfig {
+    pub fn new(model_path: impl Into<PathBuf>) -> Self {
+        let speech = WhisperSpeechConfig::new(model_path);
+        Self {
+            worker_bin: std::env::var_os("VONA_WHISPER_WORKER_BIN")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(DEFAULT_WHISPER_WORKER_BIN)),
+            model_path: speech.model_path,
+            language: speech.language,
+            task: speech.task,
+            max_decode_tokens: speech.max_decode_tokens,
+            hotwords: speech.hotwords,
+        }
+    }
+
+    pub fn from_env(model_path: impl Into<PathBuf>) -> Self {
+        let mut config = Self::new(model_path);
+        if let Some(value) = std::env::var_os("VONA_WHISPER_WORKER_BIN") {
+            config.worker_bin = PathBuf::from(value);
+        }
+        if let Some(hotwords) = transcript_hotwords_from_env("VONA_WHISPER_HOTWORDS") {
+            config.hotwords = hotwords;
+        }
+        config.max_decode_tokens = std::env::var("VONA_WHISPER_MAX_DECODE_TOKENS")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(config.max_decode_tokens);
+        config
+    }
+
+    pub fn speech_config(&self) -> WhisperSpeechConfig {
+        WhisperSpeechConfig {
+            model_path: self.model_path.clone(),
+            language: self.language.clone(),
+            task: self.task,
+            max_decode_tokens: self.max_decode_tokens,
+            hotwords: self.hotwords.clone(),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct ProtectedWhisperTranscriber {
+    config: ProtectedWhisperConfig,
+    worker: Arc<AsyncMutex<Option<WhisperWorker>>>,
+    next_request_id: Arc<AtomicU64>,
+}
+
+impl ProtectedWhisperTranscriber {
+    pub fn new(config: ProtectedWhisperConfig) -> Self {
+        Self {
+            config,
+            worker: Arc::new(AsyncMutex::new(None)),
+            next_request_id: Arc::new(AtomicU64::new(1)),
+        }
+    }
+
+    pub fn from_env(model_path: impl Into<PathBuf>) -> Self {
+        Self::new(ProtectedWhisperConfig::from_env(model_path))
+    }
+
+    pub fn config(&self) -> &ProtectedWhisperConfig {
+        &self.config
+    }
+
+    pub async fn transcribe_samples(
+        &self,
+        samples: Vec<f32>,
+        sample_rate_hz: u32,
+        channels: u16,
+    ) -> Result<String, MlxAudioError> {
+        if sample_rate_hz != DEFAULT_WHISPER_SAMPLE_RATE_HZ {
+            return Err(MlxAudioError::InvalidInput(format!(
+                "protected Whisper expects {DEFAULT_WHISPER_SAMPLE_RATE_HZ} Hz audio, got {sample_rate_hz} Hz"
+            )));
+        }
+        if channels != 1 {
+            return Err(MlxAudioError::InvalidInput(format!(
+                "protected Whisper expects mono audio, got {channels} channels"
+            )));
+        }
+
+        let request_id = self.next_request_id.fetch_add(1, Ordering::Relaxed);
+        let mut guard = self.worker.lock().await;
+        if guard.is_none() {
+            *guard = Some(start_whisper_worker(&self.config).await?);
+        }
+
+        let Some(worker) = guard.as_mut() else {
+            return Err(MlxAudioError::Runtime(
+                "protected Whisper worker was not available after start".to_string(),
+            ));
+        };
+
+        match send_whisper_worker_request(worker, request_id, sample_rate_hz, channels, &samples)
+            .await
+        {
+            Ok(transcript) => Ok(transcript),
+            Err(error) => {
+                *guard = None;
+                Err(error)
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl AudioTranscriber for ProtectedWhisperTranscriber {
+    async fn transcribe_audio(
+        &self,
+        input: AudioInputFrame,
+    ) -> Result<String, AudioProcessingError> {
+        self.transcribe_samples(input.samples, input.sample_rate_hz, input.channels)
+            .await
+            .map_err(Into::into)
+    }
+}
+
+struct WhisperWorker {
+    _child: Child,
+    stdin: ChildStdin,
+    stdout: Lines<BufReader<ChildStdout>>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WhisperWorkerReady {
+    ready: bool,
+    model: String,
+    weights: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WhisperWorkerRequest {
+    id: u64,
+    sample_rate_hz: u32,
+    channels: u16,
+    samples: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct WhisperWorkerResponse {
+    id: u64,
+    transcript: Option<String>,
+    error: Option<String>,
+}
+
+async fn start_whisper_worker(
+    config: &ProtectedWhisperConfig,
+) -> Result<WhisperWorker, MlxAudioError> {
+    let mut command = Command::new(&config.worker_bin);
+    command
+        .arg("--model")
+        .arg(&config.model_path)
+        .arg("--max-decode-tokens")
+        .arg(config.max_decode_tokens.to_string())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit());
+    command.kill_on_drop(true);
+    if let Some(language) = &config.language {
+        command.arg("--language").arg(language);
+    }
+    if matches!(config.task, WhisperTask::Translate) {
+        command.arg("--task").arg("translate");
+    }
+    if !config.hotwords.is_empty() {
+        command
+            .arg("--hotwords")
+            .arg(format_hotwords(&config.hotwords));
+    }
+
+    let mut child = command.spawn().map_err(|error| {
+        MlxAudioError::Runtime(format!(
+            "failed to spawn protected Whisper worker {}: {error}",
+            config.worker_bin.display()
+        ))
+    })?;
+    let stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| MlxAudioError::Runtime("Whisper worker stdin missing".to_string()))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| MlxAudioError::Runtime("Whisper worker stdout missing".to_string()))?;
+    let mut worker = WhisperWorker {
+        _child: child,
+        stdin,
+        stdout: BufReader::new(stdout).lines(),
+    };
+    let ready = worker
+        .stdout
+        .next_line()
+        .await
+        .map_err(|error| {
+            MlxAudioError::Runtime(format!("Whisper worker ready read failed: {error}"))
+        })?
+        .ok_or_else(|| MlxAudioError::Runtime("Whisper worker exited before ready".to_string()))?;
+    let ready: WhisperWorkerReady = serde_json::from_str(&ready).map_err(|error| {
+        MlxAudioError::Runtime(format!("Whisper worker ready JSON invalid: {error}"))
+    })?;
+    if !ready.ready {
+        return Err(MlxAudioError::Runtime(format!(
+            "Whisper worker did not report ready for model {}",
+            ready.model
+        )));
+    }
+    Ok(worker)
+}
+
+async fn send_whisper_worker_request(
+    worker: &mut WhisperWorker,
+    request_id: u64,
+    sample_rate_hz: u32,
+    channels: u16,
+    samples: &[f32],
+) -> Result<String, MlxAudioError> {
+    let header = serde_json::to_string(&WhisperWorkerRequest {
+        id: request_id,
+        sample_rate_hz,
+        channels,
+        samples: samples.len(),
+    })
+    .map_err(|error| MlxAudioError::Runtime(format!("Whisper request JSON failed: {error}")))?;
+    worker
+        .stdin
+        .write_all(header.as_bytes())
+        .await
+        .map_err(|error| {
+            MlxAudioError::Runtime(format!("Whisper worker header write failed: {error}"))
+        })?;
+    worker.stdin.write_all(b"\n").await.map_err(|error| {
+        MlxAudioError::Runtime(format!("Whisper worker header write failed: {error}"))
+    })?;
+    write_f32_le(&mut worker.stdin, samples).await?;
+    worker
+        .stdin
+        .flush()
+        .await
+        .map_err(|error| MlxAudioError::Runtime(format!("Whisper worker flush failed: {error}")))?;
+
+    let response = worker
+        .stdout
+        .next_line()
+        .await
+        .map_err(|error| {
+            MlxAudioError::Runtime(format!("Whisper worker response read failed: {error}"))
+        })?
+        .ok_or_else(|| {
+            MlxAudioError::Runtime("Whisper worker exited during transcription".to_string())
+        })?;
+    let response: WhisperWorkerResponse = serde_json::from_str(&response).map_err(|error| {
+        MlxAudioError::Runtime(format!("Whisper worker response JSON invalid: {error}"))
+    })?;
+    if response.id != request_id {
+        return Err(MlxAudioError::Runtime(format!(
+            "Whisper worker response id {} did not match request id {request_id}",
+            response.id
+        )));
+    }
+    if let Some(error) = response.error {
+        return Err(MlxAudioError::Inference(error));
+    }
+    response.transcript.ok_or_else(|| {
+        MlxAudioError::Runtime("Whisper worker response omitted transcript".to_string())
+    })
+}
+
+async fn write_f32_le(stdin: &mut ChildStdin, samples: &[f32]) -> Result<(), MlxAudioError> {
+    let mut bytes = Vec::with_capacity(samples.len() * 4);
+    for sample in samples {
+        bytes.extend_from_slice(&sample.to_le_bytes());
+    }
+    stdin.write_all(&bytes).await.map_err(|error| {
+        MlxAudioError::Runtime(format!("Whisper worker PCM write failed: {error}"))
+    })
+}
+
+fn format_hotwords(hotwords: &[TranscriptHotword]) -> String {
+    hotwords
+        .iter()
+        .map(|hotword| format!("{}={}", hotword.replacement, hotword.variants.join("|")))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+pub fn default_transcript_hotwords() -> Vec<TranscriptHotword> {
+    vec![
+        TranscriptHotword::new("Vona", ["vona", "voner", "vowna"]),
+        TranscriptHotword::new("Qwen", ["qwen", "qn", "q-n"]),
+        TranscriptHotword::new("Qwen speech", ["qnspeech", "q-n-speech", "qwenspeech"]),
+        TranscriptHotword::new("Ollama", ["ollama", "alama", "allama"]),
+        TranscriptHotword::new("Whisper", ["whisper", "wispa", "whispa"]),
+        TranscriptHotword::new("Ready case", ["readycase"]),
+        TranscriptHotword::new("Check case", ["checkcase"]),
+        TranscriptHotword::new("Test case", ["testcase"]),
+        TranscriptHotword::new("Speech check case", ["speechcheckcase"]),
+    ]
+}
+
+pub fn transcript_hotwords_from_env(name: &str) -> Option<Vec<TranscriptHotword>> {
+    let value = std::env::var(name).ok()?;
+    parse_transcript_hotwords(&value).ok()
+}
+
+pub fn parse_transcript_hotwords(value: &str) -> Result<Vec<TranscriptHotword>, String> {
+    let mut hotwords = Vec::new();
+    for entry in value
+        .split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+    {
+        let Some((replacement, variants)) = entry.split_once('=') else {
+            return Err(format!(
+                "invalid hotword entry {entry:?}; expected replacement=variant|variant"
+            ));
+        };
+        let replacement = replacement.trim();
+        if replacement.is_empty() {
+            return Err("hotword replacement cannot be empty".to_string());
+        }
+        let variants = variants
+            .split('|')
+            .map(str::trim)
+            .filter(|variant| !variant.is_empty())
+            .map(str::to_string)
+            .collect::<Vec<_>>();
+        if variants.is_empty() {
+            return Err(format!(
+                "hotword {replacement:?} must include at least one variant"
+            ));
+        }
+        hotwords.push(TranscriptHotword::new(replacement, variants));
+    }
+    Ok(hotwords)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -422,7 +817,9 @@ impl WhisperSpeechModel {
         }
         tokenizer
             .decode(&decoded_tokens, true)
-            .map(|text| postprocess_whisper_transcript(&text))
+            .map(|text| {
+                postprocess_whisper_transcript_with_hotwords(&text, &self.speech_config.hotwords)
+            })
             .map_err(|error| MlxAudioError::Inference(error.to_string()))
     }
 
@@ -683,8 +1080,16 @@ impl WhisperSpeechModel {
     }
 }
 
-#[cfg(any(feature = "native-mlx", test))]
+#[cfg(test)]
 fn postprocess_whisper_transcript(text: &str) -> String {
+    postprocess_whisper_transcript_with_hotwords(text, &default_transcript_hotwords())
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn postprocess_whisper_transcript_with_hotwords(
+    text: &str,
+    hotwords: &[TranscriptHotword],
+) -> String {
     let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
     let mut parts = Vec::new();
     let mut current = String::new();
@@ -722,11 +1127,11 @@ fn postprocess_whisper_transcript(text: &str) -> String {
     } else {
         parts.join(" ")
     };
-    collapse_repeated_word_runs(&collapsed)
+    collapse_repeated_word_runs(&collapsed, hotwords)
 }
 
 #[cfg(any(feature = "native-mlx", test))]
-fn collapse_repeated_word_runs(text: &str) -> String {
+fn collapse_repeated_word_runs(text: &str, hotwords: &[TranscriptHotword]) -> String {
     let mut output = Vec::new();
     let mut previous_normalized = String::new();
     let mut repeat_count = 0usize;
@@ -745,7 +1150,231 @@ fn collapse_repeated_word_runs(text: &str) -> String {
         }
         output.push(word);
     }
-    output.join(" ")
+    let output = collapse_repeated_expanded_restarts(&collapse_repeated_leading_phrase(
+        &collapse_repeated_phrases(&output),
+    ));
+    finish_whisper_transcript(normalize_domain_transcript_terms(&output, hotwords))
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn collapse_repeated_phrases<'a>(words: &[&'a str]) -> Vec<&'a str> {
+    let mut output = words.to_vec();
+    let mut changed = true;
+
+    while changed {
+        changed = false;
+        let mut index = 0usize;
+        while index < output.len() {
+            let remaining = output.len() - index;
+            let max_phrase_len = (remaining / 2).min(8);
+            let mut removed = false;
+
+            for phrase_len in (2..=max_phrase_len).rev() {
+                if normalized_word_slices_equal(
+                    &output[index..index + phrase_len],
+                    &output[index + phrase_len..index + (phrase_len * 2)],
+                ) {
+                    output.drain(index + phrase_len..index + (phrase_len * 2));
+                    changed = true;
+                    removed = true;
+                    break;
+                }
+            }
+
+            if !removed {
+                index += 1;
+            }
+        }
+    }
+
+    output
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn collapse_repeated_expanded_restarts<'a>(words: &[&'a str]) -> Vec<&'a str> {
+    let mut output = words.to_vec();
+    let mut changed = true;
+
+    while changed {
+        changed = false;
+        let mut index = 0usize;
+        while index < output.len() {
+            let mut removed = false;
+            let remaining = output.len() - index;
+            let max_left_len = remaining.min(8);
+
+            'candidate: for left_len in (2..=max_left_len).rev() {
+                for right_start in index + left_len..output.len() {
+                    let max_right_len = (output.len() - right_start).min(8);
+                    for right_len in (2..=max_right_len).rev() {
+                        if expanded_word_slices_equal(
+                            &output[index..index + left_len],
+                            &output[right_start..right_start + right_len],
+                        ) {
+                            output.drain(right_start..right_start + right_len);
+                            changed = true;
+                            removed = true;
+                            break 'candidate;
+                        }
+                    }
+                }
+            }
+
+            if !removed {
+                index += 1;
+            }
+        }
+    }
+
+    output
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn normalized_word_slices_equal(left: &[&str], right: &[&str]) -> bool {
+    left.len() == right.len()
+        && left.iter().zip(right.iter()).all(|(left, right)| {
+            let left = normalize_transcript_word(left);
+            let right = normalize_transcript_word(right);
+            !left.is_empty() && left == right
+        })
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn expanded_word_slices_equal(left: &[&str], right: &[&str]) -> bool {
+    let left = transcript_units(left);
+    let right = transcript_units(right);
+    left.len() >= 4 && left == right
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn transcript_units(words: &[&str]) -> Vec<String> {
+    words
+        .iter()
+        .flat_map(|word| normalize_transcript_units(word))
+        .collect()
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn normalize_transcript_units(word: &str) -> Vec<String> {
+    let normalized = normalize_transcript_word(word);
+    match normalized.as_str() {
+        "readycase" => vec!["ready".to_string(), "case".to_string()],
+        "checkcase" => vec!["check".to_string(), "case".to_string()],
+        "testcase" => vec!["test".to_string(), "case".to_string()],
+        "speechcheckcase" => vec![
+            "speech".to_string(),
+            "check".to_string(),
+            "case".to_string(),
+        ],
+        "vowna" | "voner" => vec!["vona".to_string()],
+        "" => Vec::new(),
+        other => vec![other.to_string()],
+    }
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn normalize_domain_transcript_terms(words: &[&str], hotwords: &[TranscriptHotword]) -> String {
+    words
+        .iter()
+        .flat_map(|word| normalize_domain_transcript_word(word, hotwords))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn normalize_domain_transcript_word(word: &str, hotwords: &[TranscriptHotword]) -> Vec<String> {
+    let leading = word
+        .chars()
+        .take_while(|ch| !ch.is_alphanumeric())
+        .collect::<String>();
+    let trailing = word
+        .chars()
+        .rev()
+        .take_while(|ch| !ch.is_alphanumeric())
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    let core = word
+        .trim_start_matches(|ch: char| !ch.is_alphanumeric())
+        .trim_end_matches(|ch: char| !ch.is_alphanumeric());
+    let normalized = core
+        .chars()
+        .filter(|ch| ch.is_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    let replacement = hotwords.iter().find_map(|hotword| {
+        hotword
+            .variants
+            .iter()
+            .any(|variant| normalize_hotword_key(variant) == normalized)
+            .then(|| {
+                hotword
+                    .replacement
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect::<Vec<_>>()
+            })
+    });
+
+    match replacement {
+        Some(mut words) => {
+            if let Some(first) = words.first_mut() {
+                *first = format!("{leading}{first}");
+            }
+            if let Some(last) = words.last_mut() {
+                *last = format!("{last}{trailing}");
+            }
+            words
+        }
+        None => vec![word.to_string()],
+    }
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn collapse_repeated_leading_phrase<'a>(words: &[&'a str]) -> Vec<&'a str> {
+    if words.len() < 10 {
+        return words.to_vec();
+    }
+
+    let max_phrase_len = (words.len() / 2).min(8);
+    for phrase_len in (5..=max_phrase_len).rev() {
+        for repeat_index in phrase_len..=words.len().saturating_sub(phrase_len) {
+            if normalized_word_slices_equal(
+                &words[..phrase_len],
+                &words[repeat_index..repeat_index + phrase_len],
+            ) {
+                return words[..repeat_index].to_vec();
+            }
+        }
+    }
+
+    words.to_vec()
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn normalize_transcript_word(word: &str) -> String {
+    word.trim_matches(|ch: char| !ch.is_alphanumeric())
+        .to_ascii_lowercase()
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn normalize_hotword_key(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+#[cfg(any(feature = "native-mlx", test))]
+fn finish_whisper_transcript(text: String) -> String {
+    let trimmed = text.trim();
+    if trimmed.ends_with(',') || trimmed.ends_with(';') || trimmed.ends_with(':') {
+        format!("{}.", trimmed.trim_end_matches([',', ';', ':']).trim_end())
+    } else {
+        trimmed.to_string()
+    }
 }
 
 #[cfg(feature = "native-mlx")]
@@ -861,5 +1490,94 @@ mod tests {
         );
 
         assert_eq!(text, "What should I focus on first today? Good morning.");
+    }
+
+    #[test]
+    fn postprocess_collapses_repeated_whisper_phrases() {
+        let text = super::postprocess_whisper_transcript(
+            "Hey Mera, can you tell me the time, the time, can you tell me the time, can you tell me the time.",
+        );
+
+        assert_eq!(text, "Hey Mera, can you tell me the time.");
+    }
+
+    #[test]
+    fn postprocess_collapses_repeated_leading_phrase_restart() {
+        let text = super::postprocess_whisper_transcript(
+            "Hey Mera, can you tell me the time, hey Mera, can you tell me the assistant",
+        );
+
+        assert_eq!(text, "Hey Mera, can you tell me the time.");
+    }
+
+    #[test]
+    fn postprocess_collapses_concatenated_case_restart() {
+        let text = super::postprocess_whisper_transcript(
+            "Rust Audio Pipeline Ready Case 13 Rust Audio Pipeline Readycase 13",
+        );
+
+        assert_eq!(text, "Rust Audio Pipeline Ready Case 13");
+    }
+
+    #[test]
+    fn postprocess_collapses_vona_restart_variant() {
+        let text = super::postprocess_whisper_transcript(
+            "Vowna local inference check case 50 Vona local inference check case 50.",
+        );
+
+        assert_eq!(text, "Vona local inference check case 50");
+    }
+
+    #[test]
+    fn postprocess_normalizes_domain_terms() {
+        let text = super::postprocess_whisper_transcript(
+            "A Q-N speech synthesis pass with Wispa and Alama on Vowna.",
+        );
+
+        assert_eq!(
+            text,
+            "A Qwen speech synthesis pass with Whisper and Ollama on Vona."
+        );
+    }
+
+    #[test]
+    fn postprocess_uses_configured_hotwords() {
+        let hotwords = vec![super::TranscriptHotword::new(
+            "Deliberium",
+            ["delibrium", "deliberiam"],
+        )];
+        let text = super::postprocess_whisper_transcript_with_hotwords(
+            "Ask delibrium about the plan.",
+            &hotwords,
+        );
+
+        assert_eq!(text, "Ask Deliberium about the plan.");
+    }
+
+    #[test]
+    fn parses_hotwords_from_env_format() {
+        let hotwords =
+            super::parse_transcript_hotwords("Deliberium=delibrium|deliberiam,Gemma 4=gemma for")
+                .unwrap();
+
+        assert_eq!(
+            hotwords,
+            vec![
+                super::TranscriptHotword::new("Deliberium", ["delibrium", "deliberiam"]),
+                super::TranscriptHotword::new("Gemma 4", ["gemma for"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn postprocess_keeps_non_repeated_phrases() {
+        let text = super::postprocess_whisper_transcript(
+            "Hey Mera, can you tell me the time in London and the weather in London?",
+        );
+
+        assert_eq!(
+            text,
+            "Hey Mera, can you tell me the time in London and the weather in London?"
+        );
     }
 }

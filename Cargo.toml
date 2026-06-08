@@ -6,7 +6,9 @@ members = [
     "crates/vona-deepgram",
     "crates/vona-elevenlabs",
     "crates/vona-gemini-live",
+    "crates/vona-kokoro-onnx",
     "crates/vona-model-provisioning",
+    "crates/vona-moonshine",
     "crates/vona-moshi",
     "crates/vona-mlx",
     "crates/vona-mlx-qwen3-tts",
@@ -46,6 +48,7 @@ futures-util = "0.3"
 futures-core = "0.3"
 half = "2"
 jsonschema = { version = "0.29", default-features = false }
+libloading = "0.8"
 mlx-models = "0.1.3"
 mlx-rs = { version = "0.25.3", default-features = false, features = ["metal"] }
 native-tls = "0.2"
@@ -69,7 +72,9 @@ vona-azure-speech = { version = "0.2.0", path = "crates/vona-azure-speech" }
 vona-deepgram = { version = "0.2.0", path = "crates/vona-deepgram" }
 vona-elevenlabs = { version = "0.2.0", path = "crates/vona-elevenlabs" }
 vona-gemini-live = { version = "0.2.0", path = "crates/vona-gemini-live" }
+vona-kokoro-onnx = { version = "0.2.0", path = "crates/vona-kokoro-onnx" }
 vona-model-provisioning = { version = "0.2.0", path = "crates/vona-model-provisioning" }
+vona-moonshine = { version = "0.2.0", path = "crates/vona-moonshine" }
 vona-moshi = { version = "0.2.0", path = "crates/vona-moshi" }
 vona-mlx = { version = "0.2.0", path = "crates/vona-mlx" }
 vona-mlx-qwen3-tts = { version = "0.2.0", path = "crates/vona-mlx-qwen3-tts" }
@@ -82,3 +87,6 @@ vona-seamless = { version = "0.2.0", path = "crates/vona-seamless" }
 vona-test-harness = { version = "0.2.0", path = "crates/vona-test-harness" }
 vona-transport-local = { version = "0.2.0", path = "crates/vona-transport-local" }
 vona-wake = { version = "0.2.0", path = "crates/vona-wake" }
+
+[patch.crates-io]
+mlx-sys = { path = "crates/vendor/mlx-sys" }

@@ -20,6 +20,10 @@ path = "src/lib.rs"
 name = "qwen3_tts_smoke"
 path = "examples/qwen3_tts_smoke.rs"
 
+[[example]]
+name = "qwen3_tts_ab_harness"
+path = "examples/qwen3_tts_ab_harness.rs"
+
 [features]
 default = []
 native-mlx = [

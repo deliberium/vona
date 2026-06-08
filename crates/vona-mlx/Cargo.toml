@@ -23,12 +23,13 @@ mlx-models-loader = ["native-mlx", "dep:mlx-models", "dep:tokenizers"]
 
 [dependencies]
 async-trait.workspace = true
+futures-util.workspace = true
 mlx-models = { workspace = true, optional = true }
 mlx-rs = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, features = ["rt"] }
+tokio = { workspace = true, features = ["io-util", "process", "rt", "sync"] }
 tokenizers = { workspace = true, optional = true }
 vona-core.workspace = true
 

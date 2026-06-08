@@ -20,6 +20,11 @@ path = "src/lib.rs"
 name = "whisper_smoke"
 path = "examples/whisper_smoke.rs"
 
+[[bin]]
+name = "vona_mlx_whisper_worker"
+path = "src/bin/vona_mlx_whisper_worker.rs"
+required-features = ["native-mlx"]
+
 [features]
 default = []
 native-mlx = [
@@ -30,8 +35,12 @@ native-mlx = [
 ]
 
 [dependencies]
+async-trait.workspace = true
 mlx-rs = { workspace = true, optional = true }
 serde.workspace = true
+serde_json.workspace = true
+tokio = { workspace = true, features = ["io-std", "io-util", "macros", "process", "rt", "sync"] }
 tokenizers = { workspace = true, optional = true }
+vona-core.workspace = true
 vona-mlx.workspace = true
 vona-mlx-speech.workspace = true

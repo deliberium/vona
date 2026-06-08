@@ -1,0 +1,31 @@
+[package]
+name = "vona-kokoro-onnx"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+description = "Kokoro ONNX realtime TTS adapter for Vona"
+documentation = "https://docs.rs/vona-kokoro-onnx"
+
+[dependencies]
+async-trait.workspace = true
+kokoro-micro = "1.0.0"
+ndarray.workspace = true
+ort.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "sync"] }
+vona-core.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+[[example]]
+name = "kokoro_smoke"
+path = "examples/kokoro_smoke.rs"

@@ -49,6 +49,7 @@ microphone permissions, enrollment, consent, profile storage, and product policy
 | `vona-qwen` | Qwen realtime voice protocol helper surface. |
 | `vona-ollama` | Local Ollama loopback text-generation adapter for cascaded ASR+LLM+TTS systems. |
 | `vona-model-provisioning` | Local model manifest and cache planning for Vona-owned model provisioning. |
+| `vona-moonshine` | Protected Moonshine local STT worker for fast Apple Silicon speech recognition. |
 | `vona-mlx` | Apple Silicon MLX audio engine facade and streaming STT/TTS contracts. |
 | `vona-mlx-speech` | Shared native Rust MLX speech model loading utilities. |
 | `vona-mlx-whisper` | Native Rust MLX Whisper speech-to-text loader and inference surface. |
@@ -66,6 +67,11 @@ See [`docs/vona-wake.md`](docs/vona-wake.md) for the Vona Wake architecture,
 speaker-gated admission model, evaluation harness, and real-corpus evidence
 workflow.
 
+See [`docs/moonshine-asr-benchmark.md`](docs/moonshine-asr-benchmark.md) for the
+2,000-case generated-voice Moonshine ASR benchmark. The result is fast but not
+standalone release-grade: 0.0887 average RTF and 0.301 average WER, with
+human-recorded evidence still required before making reliability claims.
+
 ## Current Status
 
 Vona is pre-1.0 and suitable for integration experiments, adapter development, and deterministic runtime testing. The public APIs may still change before a stable release.
@@ -82,7 +88,10 @@ Implemented today:
 - passthrough, Seamless M4T-style, Moshi, HTTP sidecar, and local IPC surfaces
 - protocol crates for OpenAI Realtime, Gemini Live, Azure Voice Live/Speech, Qwen realtime voice, ElevenLabs TTS, and Deepgram STT/TTS
 - local Ollama text generation through `vona-ollama`
+- local Moonshine STT through a protected persistent worker with configurable transcript hotwords
+- native Moonshine STT corpus tooling with manifest-driven generated-voice scoring and category rollups
 - Apple Silicon MLX audio experiments through `vona-mlx`, `vona-mlx-whisper`, and `vona-mlx-qwen3-tts`
+- provider-neutral realtime TTS policy for cached acknowledgements, Kokoro realtime speech, Piper low-power fallback, and Qwen3 premium synthesis
 - local model provisioning manifests, explicit artifact downloads, and cache inspection for local model adapters
 - deterministic realtime voice harness for tool-call, interruption, latency-mark, and event-order testing
 - deterministic test harnesses and release-gate benchmarks
@@ -167,6 +176,7 @@ Available facade features:
 - `seamless`: re-export `vona-seamless`
 - `moshi`: re-export `vona-moshi`
 - `ollama`: re-export `vona-ollama`
+- `moonshine`: re-export `vona-moonshine`
 - `mlx`: re-export `vona-mlx`
 - `mlx-models-loader`: enable the optional `mlx-models` loader hook in `vona-mlx`
 - `mlx-whisper`: re-export `vona-mlx-whisper`
@@ -180,6 +190,7 @@ Available facade features:
 - `openai-realtime`: re-export `vona-openai-realtime`
 - `qwen`: re-export `vona-qwen`
 - `gemini-live`: re-export `vona-gemini-live`
+- `kokoro-onnx`: re-export the phonemizer-backed Kokoro ONNX realtime TTS adapter
 - `elevenlabs`: re-export `vona-elevenlabs`
 - `deepgram`: re-export `vona-deepgram`
 - `azure-speech`: re-export `vona-azure-speech`
@@ -314,21 +325,124 @@ Adapter maturity is tracked in [docs/adapter-maturity.md](docs/adapter-maturity.
 
 ## Local MLX And Ollama Benchmark
 
-The facade includes an ignored-by-default local benchmark example that wires Qwen3 TTS, Whisper STT, and Ollama text generation together for 100 voice+chat cases. It requires local model artifacts and a running Ollama server:
+The facade includes an ignored-by-default local benchmark example that wires realtime TTS, Whisper STT, and Ollama text generation together for 100 voice+chat cases. It requires local model artifacts and a running Ollama server:
 
 ```bash
 ollama pull phi4-mini
 
-export VONA_E2E_QWEN3_TTS_MODEL=/absolute/path/to/qwen3-tts
+export VONA_E2E_KOKORO_ONNX_MODEL=/absolute/path/to/kokoro-0.onnx
+export VONA_E2E_KOKORO_VOICES=/absolute/path/to/voices/0.bin
 export VONA_E2E_WHISPER_MODEL=/absolute/path/to/distil-whisper
 export VONA_E2E_OLLAMA_MODEL=phi4-mini
+# Or compare multiple backend-profile LLMs on the same generated audio/transcript cases:
+export VONA_E2E_OLLAMA_MODELS=phi4-mini,hf.co/unsloth/gemma-4-12b-it-GGUF:UD-Q4_K_XL
+export VONA_E2E_MLX_VLM_MODELS=mlx-community/gemma-4-12B-it-4bit
+export VONA_MLX_VLM_PYTHON=/absolute/path/to/python-with-mlx-vlm
+export VONA_E2E_REALTIME_TTS_PROVIDER=kokoro
+# Optional ASR vocabulary normalization for customer/project terms:
+export VONA_WHISPER_HOTWORDS='Deliberium=delibrium|deliberiam,Gemma 4=gemma for|gemma four'
+# Optional contained ASR runtime, recommended for release-grade native MLX use:
+export VONA_E2E_WHISPER_RUNTIME=worker
+export VONA_WHISPER_WORKER_BIN=/absolute/path/to/vona_mlx_whisper_worker
 
 RUSTFLAGS="-C target-cpu=native" cargo run -p vona \
-  --features "ollama mlx-whisper-native mlx-qwen3-tts-native model-provisioning" \
+  --features "kokoro-onnx ollama mlx-whisper-native mlx-qwen3-tts-native model-provisioning" \
   --example mlx_ollama_voice_bench --locked
 ```
 
+The benchmark routes synthesis through `PolicyAudioSynthesizer`. `VONA_E2E_REALTIME_TTS_PROVIDER` defaults to `kokoro`; it can also be set to `qwen3` or a custom provider name registered by the harness/application. `VONA_E2E_OLLAMA_MODELS` and `VONA_E2E_MLX_VLM_MODELS` run comma-separated A/B sets against the same TTS and STT cases, report per-model success/error counts, first-frame latency, and load/error rows, and keep model-load failures visible in the generated Markdown instead of aborting the run. The MLX-VLM path uses a persistent JSON-lines worker so the model remains loaded between turns, streams token deltas back to Vona as `TextGenerationFrame`s, and cooperatively cancels in-flight generation when the downstream stream is dropped; override the bundled worker script with `VONA_MLX_VLM_WORKER_SCRIPT` when needed.
+
+Native Whisper postprocessing supports configurable transcript hotwords through `WhisperSpeechConfig::with_hotwords(...)` or `VONA_WHISPER_HOTWORDS`. The environment format is comma-separated `replacement=variant|variant` entries. Vona ships a small default list for local-stack terms such as Vona, Qwen, Ollama, and Whisper; downstream applications can replace it with their own customer vocabulary.
+
+Native MLX inference is fast but not process-contained: if the underlying MLX C++/Metal runtime throws across the Rust FFI boundary, Rust cannot catch it and the process aborts. Release-grade deployments should use `ProtectedWhisperTranscriber` with the `vona_mlx_whisper_worker` binary. The parent process sends raw little-endian `f32` PCM behind a JSON-lines header, keeps one model-loaded worker warm, and restarts the worker after EOF/write/read failures instead of dying with the native MLX runtime.
+
+Moonshine STT can run through a direct native binding or the same protected-worker idea without tying ASR to MLX Whisper. Enable the `moonshine` facade feature and create `NativeMoonshineTranscriber` with `VONA_MOONSHINE_LIBRARY_PATH` plus `VONA_MOONSHINE_MODEL_PATH`, or `ProtectedMoonshineTranscriber` with `VONA_MOONSHINE_PYTHON` and `VONA_MOONSHINE_WORKER_SCRIPT`. Both paths use raw little-endian `f32` PCM and the same hotword postprocessing. The current labeled synthetic benchmark favors `MEDIUM_STREAMING`: 12 cases, avg WER `0.019`, avg STT `392.1 ms`, near-exact `11/12`.
+
+Build the worker with:
+
+```bash
+cargo build -p vona-mlx-whisper --features native-mlx --bin vona_mlx_whisper_worker --release
+```
+
+`mlx-sys` 0.2.0 builds its bundled `mlx-c` project, and that CMake project may fetch `ml-explore/mlx` from GitHub during compilation. For bootstrap/provisioning, prefetch MLX source with:
+
+```bash
+MLX_REF=main MLX_CACHE_DIR=resources/vendor/mlx ./scripts/prefetch_mlx_artifacts.sh
+export MLX_SOURCE_DIR=resources/vendor/mlx
+export METAL_CPP_SOURCE_DIR=resources/vendor/metal-cpp
+export JSON_SOURCE_DIR=resources/vendor/nlohmann-json
+export FMT_SOURCE_DIR=resources/vendor/fmt
+export GGUF_SOURCE_DIR=resources/vendor/gguf-tools
+```
+
+Vona patches `mlx-sys` through Cargo `[patch.crates-io]` so native builds can pass `MLX_SOURCE_DIR`, `METAL_CPP_SOURCE_DIR`, `JSON_SOURCE_DIR`, `FMT_SOURCE_DIR`, and `GGUF_SOURCE_DIR` through to the bundled `mlx-c`/MLX CMake projects. The `resources/vendor/*` artifact directories are intentionally ignored by git because they are upstream source/header checkouts; bootstrap should prefetch them on machines that build native MLX artifacts.
+
 The historical 100-case run record lives in [docs/mlx-ollama-e2e-benchmark.md](docs/mlx-ollama-e2e-benchmark.md). It documents the benchmark shape and any quality caveats for that run.
+
+## Realtime TTS Policy
+
+Vona separates voice-turn policy from individual TTS engines. The default local realtime policy is:
+
+- cached acknowledgement audio for tiny nudges such as "Okay" or "One moment"
+- Kokoro-82M ONNX for short realtime replies
+- Piper for low-power mode and fallback
+- Qwen3 TTS for long or premium-quality synthesis
+
+Applications can use `RealtimeTtsPolicy` to select a provider, or `PolicyAudioSynthesizer` to route synthesis through configured provider slots. The default realtime provider is Kokoro, but downstream clients can replace it with `TtsProviderId::custom_realtime("provider-name")` and register any streaming-capable `AudioSynthesizer` through `with_custom_realtime_provider(...)`. The policy keeps Kokoro, Piper, Qwen3, and client-provided realtime TTS engines behind the same contract so downstream apps can change providers without rewriting voice-turn orchestration.
+
+The `kokoro-onnx` feature provides `KokoroOnnxSynthesizer`, a phonemizer-backed Kokoro ONNX adapter that implements `AudioSynthesizer` and can be registered directly in the Kokoro realtime slot.
+
+Model provisioning exposes provider-managed manifests for the realtime policy:
+
+- `kokoro_82m_onnx_realtime_manifest()`
+- `piper_low_power_tts_manifest()`
+- `qwen3_tts_12hz_0_6b_base_bf16_manifest()`
+
+## Local Text Routing Policy
+
+Vona also separates text-model routing from individual LLM adapters. The default local policy is designed for the Gemma 4 versus phi4 benchmark result:
+
+- `phi4-mini` through Ollama for short, latency-sensitive voice turns
+- `mlx-community/gemma-4-12B-it-4bit` through the persistent MLX-VLM worker for long, complex, or reasoning-heavy turns
+- explicit downstream override when an application wants to force a configured backend
+
+Applications can use `TextRoutingPolicy` to inspect the selected backend, or `PolicyTextGenerator` to register both generators and route calls through one `TextGenerator` implementation. `TextRoutingRequest::interactive(...)` is the low-latency default; `TextRoutingRequest::reasoning(...)`, `expect_long_answer`, `prefer_reasoning_quality`, long prompts, or complex terms such as "compare", "debug", "architecture", "why", and "tradeoff" route to the reasoning backend. Downstream applications remain free to replace either side with `TextBackendId::custom("provider-name")`.
+
+## Qwen3 TTS Streaming A/B Harness
+
+The Qwen3 TTS crate keeps full offline synthesis as the reference oracle for streaming work. Use the A/B harness to compare that oracle against the selected streaming vocoder mode with the same text and deterministic seed:
+
+```bash
+export VONA_QWEN3_TTS_SEED=7
+export VONA_MLX_QWEN3_TTS_STREAM_VOCODER_MODE=rolling
+export VONA_MLX_QWEN3_TTS_STREAM_WINDOW_FRAMES=160
+export VONA_QWEN3_TTS_AB_REPORT=target/qwen3-tts-ab.json
+
+RUSTFLAGS="-C target-cpu=native" cargo run -p vona-mlx-qwen3-tts \
+  --features native-mlx \
+  --example qwen3_tts_ab_harness --locked -- \
+  /absolute/path/to/qwen3-tts \
+  "Hello from Vona. This is the streaming vocoder comparison."
+```
+
+The report includes time-to-first-audio, total offline and streaming synthesis time, waveform RMSE/MAE/max-delta/correlation, duration delta, and log-spectral RMSE. Set `VONA_QWEN3_TTS_AB_ENFORCE=1` to fail the run when quality thresholds are missed. The default thresholds can be overridden with `VONA_QWEN3_TTS_AB_MAX_RMSE`, `VONA_QWEN3_TTS_AB_MIN_CORRELATION`, and `VONA_QWEN3_TTS_AB_MAX_LOG_SPECTRAL_RMSE`.
+
+Use `--suite` instead of a text argument to run the built-in six-case text suite:
+
+```bash
+VONA_QWEN3_TTS_AB_ENFORCE=1 cargo run -p vona-mlx-qwen3-tts \
+  --features native-mlx \
+  --example qwen3_tts_ab_harness --locked -- \
+  /absolute/path/to/qwen3-tts --suite
+```
+
+Streaming vocoder modes are selected with `VONA_MLX_QWEN3_TTS_STREAM_VOCODER_MODE`:
+
+- `rolling`: rolling-window overlap-add fallback, intended as the robust default while cached-state work is being proven.
+- `prefix`: full-prefix re-vocoding oracle path, useful for debugging streaming correctness but usually too expensive for production.
+- `cached`: experimental incremental waveform decoder/cache path. It requires `VONA_MLX_QWEN3_TTS_ENABLE_EXPERIMENTAL_CACHED_STATE=1`; keep it off for production until it passes the A/B harness with a material timing win.
+
+The rolling mode window can be tuned with `VONA_MLX_QWEN3_TTS_STREAM_WINDOW_FRAMES`. The default is 160 frames because the six-case suite passed at 160, while 48, 64, 80, 96, and 128 frames failed at least one long or numeric case. Smaller windows can improve first-audio timing on short utterances, but should remain experimental until a broader suite passes.
 
 ## Model-Free Demo
 

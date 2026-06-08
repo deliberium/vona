@@ -33,16 +33,19 @@ pub mod types {
 pub use vona_core::{
     AudioInputFrame, AudioOutputFrame, AudioProcessingError, AudioStreamingTranscriber,
     AudioSynthesisConfig, AudioSynthesizer, AudioTranscriber, AudioTransport, AuditEvent,
-    AuditEventKind, AuditSink, BackendCapabilities, BackendError, BackendStep, ControlEvent,
-    ExternalContextEvent, FallbackReason, FillerStrategy, NoOpAuditSink, PassthroughStsBackend,
-    RealtimeLatencyMark, RealtimeLatencyStage, RealtimeVoiceBackend, RealtimeVoiceCapabilities,
+    AuditEventKind, AuditSink, BackendCapabilities, BackendError, BackendStep, CachedAudioClip,
+    ControlEvent, ExternalContextEvent, FallbackReason, FillerStrategy, NoOpAuditSink,
+    PassthroughStsBackend, PolicyAudioSynthesizer, PolicyTextGenerator, RealtimeLatencyMark,
+    RealtimeLatencyStage, RealtimeTtsPolicy, RealtimeVoiceBackend, RealtimeVoiceCapabilities,
     RealtimeVoiceControl, RealtimeVoiceError, RealtimeVoiceInput, RealtimeVoiceModelFamily,
     RealtimeVoiceOutput, RealtimeVoiceSessionConfig, SessionCloseReason, SessionConfig,
     SessionError, SessionMetrics, SessionPolicy, SessionState, SessionSummary, Skill, SkillCall,
     SkillContext, SkillError, SkillExecutor, SkillOutput, SkillRegistry, SpeechStyleProfile,
     SpeechToSpeechBackend, StreamingTranscriptKind, StreamingTranscriptUpdate,
-    StreamingTranscriptionConfig, StreamingTranscriptionSession, TextGenerationError,
-    TextGenerationFrame, TextGenerationInput, TextGenerator, TokenStream, TransportError,
+    StreamingTranscriptionConfig, StreamingTranscriptionSession, TextBackendId,
+    TextBackendSelection, TextGenerationError, TextGenerationFrame, TextGenerationInput,
+    TextGenerator, TextRoutingPolicy, TextRoutingRequest, TextTurnKind, TokenStream,
+    TransportError, TtsPolicyRequest, TtsProviderId, TtsProviderSelection, TtsTurnKind,
     VonaRuntime, run_session,
 };
 
@@ -78,7 +81,29 @@ pub use vona_model_provisioning as model_provisioning;
 pub use vona_model_provisioning::{
     HttpModelProvisioner, LocalModelProvider, ModelArtifact, ModelCache, ModelManifest,
     PlannedArtifact, ProvisionPlan, ProvisioningError, distil_whisper_large_v3_manifest,
-    mlx_speech_model_manifests, qwen3_tts_12hz_0_6b_base_bf16_manifest,
+    kokoro_82m_onnx_realtime_manifest, mlx_speech_model_manifests, piper_low_power_tts_manifest,
+    qwen3_tts_12hz_0_6b_base_bf16_manifest, realtime_tts_model_manifests,
+};
+
+#[cfg(feature = "kokoro-onnx")]
+pub use vona_kokoro_onnx as kokoro_onnx;
+#[cfg(feature = "kokoro-onnx")]
+pub use vona_kokoro_onnx::{
+    DEFAULT_KOKORO_SAMPLE_RATE_HZ, DEFAULT_KOKORO_VOICE, KokoroModelInfo, KokoroOnnxConfig,
+    KokoroOnnxError, KokoroOnnxSynthesizer, KokoroVoice,
+};
+
+#[cfg(feature = "moonshine")]
+pub use vona_moonshine as moonshine;
+#[cfg(feature = "moonshine")]
+pub use vona_moonshine::{
+    DEFAULT_MOONSHINE_ARCH, DEFAULT_MOONSHINE_SAMPLE_RATE_HZ, MoonshineTranscriberConfig,
+    NativeMoonshineTranscriber, ProtectedMoonshineTranscriber,
+    TranscriptHotword as MoonshineTranscriptHotword,
+    default_transcript_hotwords as default_moonshine_transcript_hotwords,
+    parse_transcript_hotwords as parse_moonshine_transcript_hotwords,
+    postprocess_transcript as postprocess_moonshine_transcript,
+    transcript_hotwords_from_env as moonshine_transcript_hotwords_from_env,
 };
 
 #[cfg(feature = "moshi")]
@@ -90,8 +115,9 @@ pub use vona_moshi::{MoshiBackend, MoshiConfig, MoshiSession};
 pub use vona_mlx as mlx;
 #[cfg(feature = "mlx")]
 pub use vona_mlx::{
-    LoadedMlxModel, MlxAudioConfig, MlxAudioEngine, MlxAudioError, MlxAudioSession, MlxModelKind,
-    MlxModelLoadRequest, MlxModelLoader, MlxModelsLoader, MlxSpeechModel,
+    DEFAULT_VLM_TEXT_MODEL_ID, LoadedMlxModel, MlxAudioConfig, MlxAudioEngine, MlxAudioError,
+    MlxAudioSession, MlxModelKind, MlxModelLoadRequest, MlxModelLoader, MlxModelsLoader,
+    MlxSpeechModel, MlxVlmTextConfig, MlxVlmTextEngine,
 };
 
 #[cfg(feature = "mlx-qwen3-tts")]
@@ -106,8 +132,10 @@ pub use vona_mlx_qwen3_tts::{
 pub use vona_mlx_whisper as mlx_whisper;
 #[cfg(feature = "mlx-whisper")]
 pub use vona_mlx_whisper::{
-    DEFAULT_WHISPER_SAMPLE_RATE_HZ, WhisperConfig, WhisperLoader, WhisperSpeechConfig,
-    WhisperSpeechModel, WhisperTask,
+    DEFAULT_WHISPER_SAMPLE_RATE_HZ, DEFAULT_WHISPER_WORKER_BIN, ProtectedWhisperConfig,
+    ProtectedWhisperTranscriber, TranscriptHotword, WhisperConfig, WhisperLoader,
+    WhisperSpeechConfig, WhisperSpeechModel, WhisperTask, default_transcript_hotwords,
+    parse_transcript_hotwords, transcript_hotwords_from_env,
 };
 
 #[cfg(feature = "ollama")]

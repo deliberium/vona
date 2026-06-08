@@ -19,7 +19,7 @@ path = "src/lib.rs"
 [[example]]
 name = "mlx_ollama_voice_bench"
 path = "examples/mlx_ollama_voice_bench.rs"
-required-features = ["mlx-qwen3-tts-native", "mlx-whisper-native", "ollama"]
+required-features = ["kokoro-onnx", "mlx-qwen3-tts-native", "mlx-whisper-native", "ollama"]
 
 [features]
 default = []
@@ -29,7 +29,9 @@ all = [
     "deepgram",
     "elevenlabs",
     "gemini-live",
+    "kokoro-onnx",
     "model-provisioning",
+    "moonshine",
     "moshi",
     "mlx",
     "mlx-models-loader",
@@ -52,6 +54,7 @@ cloud = [
     "qwen",
 ]
 seamless = ["dep:vona-seamless"]
+kokoro-onnx = ["dep:vona-kokoro-onnx"]
 moshi = ["dep:vona-moshi"]
 mlx = ["dep:vona-mlx"]
 mlx-models-loader = ["mlx", "vona-mlx/mlx-models-loader"]
@@ -71,6 +74,7 @@ elevenlabs = ["dep:vona-elevenlabs"]
 deepgram = ["dep:vona-deepgram"]
 azure-speech = ["dep:vona-azure-speech"]
 model-provisioning = ["dep:vona-model-provisioning"]
+moonshine = ["dep:vona-moonshine"]
 
 [dependencies]
 vona-core.workspace = true
@@ -78,7 +82,9 @@ vona-azure-speech = { workspace = true, optional = true }
 vona-deepgram = { workspace = true, optional = true }
 vona-elevenlabs = { workspace = true, optional = true }
 vona-gemini-live = { workspace = true, optional = true }
+vona-kokoro-onnx = { workspace = true, optional = true }
 vona-model-provisioning = { workspace = true, optional = true }
+vona-moonshine = { workspace = true, optional = true }
 vona-moshi = { workspace = true, optional = true }
 vona-mlx = { workspace = true, optional = true }
 vona-mlx-qwen3-tts = { workspace = true, optional = true }
